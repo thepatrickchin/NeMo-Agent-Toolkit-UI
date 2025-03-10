@@ -1,7 +1,6 @@
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_TEMPERATURE } from '@/utils/app/const';
 import {
   cleanData,
-  isExportFormatV1,
+  isExportFormatV1, 
   isExportFormatV2,
   isExportFormatV3,
   isExportFormatV4,
@@ -9,7 +8,6 @@ import {
 } from '@/utils/app/importExport';
 
 import { ExportFormatV1, ExportFormatV2, ExportFormatV4 } from '@/types/export';
-import { OllamaModelID, OllamaModels } from '@/types/ollama';
 
 
 import { describe, expect, it } from 'vitest';
@@ -101,9 +99,6 @@ describe('cleanData Functions', () => {
                 content: 'Hi',
               },
             ],
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            prompt: DEFAULT_SYSTEM_PROMPT,
-            temperature: DEFAULT_TEMPERATURE,
             folderId: null,
           },
         ],
@@ -157,9 +152,6 @@ describe('cleanData Functions', () => {
                 content: 'Hi',
               },
             ],
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            prompt: DEFAULT_SYSTEM_PROMPT,
-            temperature: DEFAULT_TEMPERATURE,
             folderId: null,
           },
         ],
@@ -193,9 +185,6 @@ describe('cleanData Functions', () => {
                 content: 'Hi',
               },
             ],
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            prompt: DEFAULT_SYSTEM_PROMPT,
-            temperature: DEFAULT_TEMPERATURE,
             folderId: null,
           },
         ],
@@ -204,16 +193,6 @@ describe('cleanData Functions', () => {
             id: '1',
             name: 'folder 1',
             type: 'chat',
-          },
-        ],
-        prompts: [
-          {
-            id: '1',
-            name: 'prompt 1',
-            description: '',
-            content: '',
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            folderId: null,
           },
         ],
       } as ExportFormatV4;
@@ -236,9 +215,6 @@ describe('cleanData Functions', () => {
                 content: 'Hi',
               },
             ],
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            prompt: DEFAULT_SYSTEM_PROMPT,
-            temperature: DEFAULT_TEMPERATURE,
             folderId: null,
           },
         ],
@@ -248,17 +224,7 @@ describe('cleanData Functions', () => {
             name: 'folder 1',
             type: 'chat',
           },
-        ],
-        prompts: [
-          {
-            id: '1',
-            name: 'prompt 1',
-            description: '',
-            content: '',
-            model: OllamaModels[OllamaModelID.DEFAULTMODEL],
-            folderId: null,
-          },
-        ],
+        ]
       });
     });
   });

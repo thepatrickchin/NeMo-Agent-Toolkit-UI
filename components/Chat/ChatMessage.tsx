@@ -1,39 +1,46 @@
+'use client';
 import {
   IconCheck,
   IconCopy,
   IconEdit,
-  IconRobot,
+  IconPlayerPause,
   IconTrash,
   IconUser,
+  IconVolume2,
 } from '@tabler/icons-react';
 import { FC, memo, useContext, useEffect, useRef, useState } from 'react';
-
 import { useTranslation } from 'next-i18next';
-
 import { updateConversation } from '@/utils/app/conversation';
-
 import { Message } from '@/types/chat';
-
 import HomeContext from '@/pages/api/home/home.context';
-
-import { CodeBlock } from '../Markdown/CodeBlock';
 import { MemoizedReactMarkdown } from '../Markdown/MemoizedReactMarkdown';
-
-import rehypeMathjax from 'rehype-mathjax';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import { BotAvatar } from '@/components/Avatar/BotAvatar';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import { getReactMarkDownCustomComponents } from '../Markdown/CustomComponents';
+import { fixMalformedHtml, generateContentIntermediate } from '@/utils/app/helper';
 
 export interface Props {
   message: Message;
   messageIndex: number;
-  onEdit?: (editedMessage: Message) => void
+  onEdit?: (editedMessage: Message) => void;
 }
 
-export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) => {
+export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit}) => {
+
+  // return if the there is nothing to show
+  // no message and no intermediate steps
+  if (message?.content === ''
+      && message?.intermediateSteps?.length === 0) {
+    return
+  }
+
   const { t } = useTranslation('chat');
 
   const {
-    state: { selectedConversation, conversations, currentMessage, messageIsStreaming },
+    state: { selectedConversation, conversations, messageIsStreaming },
     dispatch: homeDispatch,
   } = useContext(HomeContext);
 
@@ -41,8 +48,9 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [messageContent, setMessageContent] = useState(message.content);
   const [messagedCopied, setMessageCopied] = useState(false);
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const toggleEditing = () => {
     setIsEditing(!isEditing);
@@ -124,6 +132,62 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
     }
   }, [isEditing]);
 
+  const removeLinks = (text: string) => {
+    // This regex matches http/https URLs
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.replace(urlRegex, '');
+  };
+
+  const handleTextToSpeech = () => {
+    if ('speechSynthesis' in window) {
+      if (isPlaying) {
+        window.speechSynthesis.cancel();
+        setIsPlaying(false);
+      } else {
+        const textWithoutLinks = removeLinks(message?.content);
+        const utterance = new SpeechSynthesisUtterance(textWithoutLinks);
+        utterance.onend = () => setIsPlaying(false);
+        utterance.onerror = () => setIsPlaying(false);
+        speechSynthesisRef.current = utterance;
+        setIsPlaying(true);
+        window.speechSynthesis.speak(utterance);
+      }
+    } else {
+      console.log('Text-to-speech is not supported in your browser.');
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (speechSynthesisRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const prepareContent = ({ 
+    message = {}, 
+    responseContent = true, 
+    intermediateStepsContent = false, 
+    role = 'assistant' 
+  } = {}) => {
+    const { content = '', intermediateSteps = [] } = message;
+  
+    if (role === 'user') return content.trim();
+  
+    let result = '';
+    if (intermediateStepsContent) {
+      result += generateContentIntermediate(intermediateSteps);
+    }
+    
+    if (responseContent) {
+      result += result ? `\n\n${content}` : content;
+    }
+  
+    // fixing malformed html and removing extra spaces to avoid markdown issues
+    return fixMalformedHtml(result)?.trim()?.replace(/\n\s+/, "\n ");
+  };
+
   return (
     <div
       className={`group md:px-4 ${
@@ -133,16 +197,16 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
       }`}
       style={{ overflowWrap: 'anywhere' }}
     >
-      <div className="relative m-auto flex p-4 text-base md:max-w-2xl md:gap-6 md:py-6 lg:max-w-2xl lg:px-0 xl:max-w-3xl">
+      <div className="relative m-auto flex text-base sm:w-[95%] 2xl:w-[60%] md:gap-6 sm:p-2 md:py-6 lg:px-0">
         <div className="min-w-[40px] text-right font-bold">
           {message.role === 'assistant' ? (
-            <IconRobot size={30} />
+            <BotAvatar src={'nvidia.jpg'} />
           ) : (
             <IconUser size={30} />
           )}
         </div>
 
-        <div className="prose mt-[-2px] w-full dark:prose-invert">
+        <div className="w-full dark:prose-invert overflow-hidden">
           {message.role === 'user' ? (
             <div className="flex w-full">
               {isEditing ? (
@@ -167,7 +231,7 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
 
                   <div className="mt-10 flex justify-center space-x-4">
                     <button
-                      className="h-[40px] rounded-md bg-blue-500 px-4 py-1 text-sm font-medium text-white enabled:hover:bg-blue-600 disabled:opacity-50"
+                      className="h-[40px] rounded-md border border-neutral-300 px-4 py-1 text-sm font-medium text-neutral-700 enabled:hover:bg-[#76b900] disabled:opacity-50"
                       onClick={handleEditMessage}
                       disabled={messageContent.trim().length <= 0}
                     >
@@ -185,21 +249,29 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
                   </div>
                 </div>
               ) : (
-                <div className="prose whitespace-pre-wrap dark:prose-invert flex-1">
-                  {message.content}
+                <div className="prose whitespace-pre-wrap dark:prose-invert flex-1 w-full overflow-x-auto">
+                  <ReactMarkdown
+                    className="prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-normal"
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeRaw] as any}
+                    linkTarget="_blank"
+                    components={getReactMarkDownCustomComponents(messageIndex, message?.id)}
+                  >
+                    {prepareContent({ message, role: 'user' })}
+                  </ReactMarkdown>
                 </div>
               )}
 
               {!isEditing && (
-                <div className="md:-mr-8 ml-1 md:ml-0 flex flex-col md:flex-row gap-4 md:gap-1 items-center md:items-start justify-end md:justify-start">
+                <div className="absolute right-2 flex flex-col md:flex-row gap-1 items-center md:items-start justify-end md:justify-start">
                   <button
-                    className="invisible group-hover:visible focus:visible text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
                     onClick={toggleEditing}
                   >
                     <IconEdit size={20} />
                   </button>
                   <button
-                    className="invisible group-hover:visible focus:visible text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
                     onClick={handleDeleteMessage}
                   >
                     <IconTrash size={20} />
@@ -208,78 +280,71 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
               )}
             </div>
           ) : (
-            <div className="flex flex-row">
-              <MemoizedReactMarkdown
-                className="prose dark:prose-invert flex-1"
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeMathjax]}
-                components={{
-                  code({ node, inline, className, children, ...props }) {
-                    if (children.length) {
-                      if (children[0] == '▍') {
-                        return <span className="animate-pulse cursor-default mt-1">▍</span>
-                      }
-
-                      children[0] = (children[0] as string).replace("`▍`", "▍")
-                    }
-
-                    const match = /language-(\w+)/.exec(className || '');
-
-                    return !inline ? (
-                      <CodeBlock
-                        key={Math.random()}
-                        language={(match && match[1]) || ''}
-                        value={String(children).replace(/\n$/, '')}
-                        {...props}
-                      />
-                    ) : (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
-                  table({ children }) {
-                    return (
-                      <table className="border-collapse border border-black px-3 py-1 dark:border-white">
-                        {children}
-                      </table>
-                    );
-                  },
-                  th({ children }) {
-                    return (
-                      <th className="break-words border border-black bg-gray-500 px-3 py-1 text-white dark:border-white">
-                        {children}
-                      </th>
-                    );
-                  },
-                  td({ children }) {
-                    return (
-                      <td className="break-words border border-black px-3 py-1 dark:border-white">
-                        {children}
-                      </td>
-                    );
-                  },
-                }}
-              >
-                {`${message.content}${
-                  messageIsStreaming && messageIndex == (selectedConversation?.messages.length ?? 0) - 1 ? '`▍`' : ''
-                }`}
-              </MemoizedReactMarkdown>
-
-              <div className="md:-mr-8 ml-1 md:ml-0 flex flex-col md:flex-row gap-4 md:gap-1 items-center md:items-start justify-end md:justify-start">
-                {messagedCopied ? (
-                  <IconCheck
-                    size={20}
-                    className="text-green-500 dark:text-green-400"
-                  />
-                ) : (
-                  <button
-                    className="invisible group-hover:visible focus:visible text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                    onClick={copyOnClick}
+            <div className="flex flex-col w-[90%]">
+              <div className="flex flex-col gap-2">    
+                {/* for intermediate steps content  */}
+                <div className="overflow-x-auto">
+                  <MemoizedReactMarkdown
+                    className="prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-normal"
+                    rehypePlugins={[rehypeRaw] as any}
+                    remarkPlugins={[
+                      remarkGfm, 
+                      [remarkMath, {
+                        singleDollarTextMath: false,
+                      }]
+                    ]}
+                    linkTarget="_blank"
+                    components={getReactMarkDownCustomComponents(messageIndex, message?.id)}
                   >
-                    <IconCopy size={20} />
-                  </button>
-                )}
+                    {prepareContent({ message, role: 'assistant', intermediateStepsContent: true, responseContent: false })}
+                  </MemoizedReactMarkdown>
+                </div>
+                {/* for response content */}
+                <div className="overflow-x-auto">
+                  <MemoizedReactMarkdown
+                    className="prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-normal"
+                    rehypePlugins={[rehypeRaw] as any}
+                    remarkPlugins={[
+                      remarkGfm, 
+                      [remarkMath, {
+                        singleDollarTextMath: false,
+                      }]
+                    ]}
+                    linkTarget="_blank"
+                    components={getReactMarkDownCustomComponents(messageIndex, message?.id)}
+                  >
+                    {prepareContent({ message, role: 'assistant', intermediateStepsContent: false, responseContent: true })}
+                  </MemoizedReactMarkdown>
+                </div>
+                <div className="mt-1 flex gap-1">
+                  { 
+                    !messageIsStreaming && 
+                    <>
+                      {messagedCopied ? 
+                        <IconCheck
+                          size={20}
+                          className="text-[#76b900] dark:text-[#76b900]"
+                          id={message?.id}
+                        /> : 
+                        <button
+                          className="text-[#76b900] hover:text-gray-700 dark:text-[#76b900] dark:hover:round-gray-300"
+                          onClick={copyOnClick}
+                          title="Copy to clipboard"
+                          id={message?.id}
+                        >
+                          <IconCopy size={20} />
+                        </button>
+                      }
+                      <button
+                        className="text-[#76b900] hover:text-gray-700 dark:text-[#76b900] dark:hover:text-gray-300"
+                        onClick={handleTextToSpeech}
+                        aria-label={isPlaying ? "Stop speaking" : "Start speaking"}
+                      >
+                        {isPlaying ? <IconPlayerPause size={20} className='animate-pulse text-red-400' /> : <IconVolume2 size={20} />}
+                      </button>
+                    </>  
+                  }
+                </div>
               </div>
             </div>
           )}
@@ -289,3 +354,4 @@ export const ChatMessage: FC<Props> = memo(({ message, messageIndex, onEdit }) =
   );
 });
 ChatMessage.displayName = 'ChatMessage';
+

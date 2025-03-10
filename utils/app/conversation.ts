@@ -1,4 +1,5 @@
-import { Conversation } from '@/types/chat';
+import { Conversation, Role } from '@/types/chat';
+import toast from 'react-hot-toast';
 
 export const updateConversation = (
   updatedConversation: Conversation,
@@ -22,9 +23,24 @@ export const updateConversation = (
 };
 
 export const saveConversation = (conversation: Conversation) => {
-  localStorage.setItem('selectedConversation', JSON.stringify(conversation));
+  try {
+    sessionStorage.setItem('selectedConversation', JSON.stringify(conversation));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      console.log('Storage quota exceeded, cannot save conversation.');
+      toast.error('Storage quota exceeded, cannot save conversation.');
+    }
+  }
 };
 
 export const saveConversations = (conversations: Conversation[]) => {
-  localStorage.setItem('conversationHistory', JSON.stringify(conversations));
+  try {
+    sessionStorage.setItem('conversationHistory', JSON.stringify(conversations));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      console.log('Storage quota exceeded, cannot save conversations.');
+      toast.error('Storage quota exceeded, cannot save conversation.');
+    }
+  }
 };
+

@@ -18,5 +18,5 @@ export const updatePrompt = (updatedPrompt: Prompt, allPrompts: Prompt[]) => {
 };
 
 export const savePrompts = (prompts: Prompt[]) => {
-  localStorage.setItem('prompts', JSON.stringify(prompts));
+  sessionStorage.setItem('prompts', JSON.stringify(prompts));
 };

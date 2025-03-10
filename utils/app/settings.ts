@@ -4,9 +4,9 @@ const STORAGE_KEY = 'settings';
 
 export const getSettings = (): Settings => {
   let settings: Settings = {
-    theme: 'dark',
+    theme: 'light',
   };
-  const settingsJson = localStorage.getItem(STORAGE_KEY);
+  const settingsJson = sessionStorage.getItem(STORAGE_KEY);
   if (settingsJson) {
     try {
       let savedSettings = JSON.parse(settingsJson) as Settings;
@@ -19,5 +19,5 @@ export const getSettings = (): Settings => {
 };
 
 export const saveSettings = (settings: Settings) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 };

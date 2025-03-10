@@ -4,14 +4,12 @@ import { useTranslation } from 'next-i18next';
 
 import { useCreateReducer } from '@/hooks/useCreateReducer';
 
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_TEMPERATURE } from '@/utils/app/const';
 import { saveConversation, saveConversations } from '@/utils/app/conversation';
 import { saveFolders } from '@/utils/app/folders';
 import { exportData, importData } from '@/utils/app/importExport';
 
 import { Conversation } from '@/types/chat';
 import { LatestExportFormat, SupportedExportFormats } from '@/types/export';
-import { OllamaModels } from '@/types/ollama';
 
 import HomeContext from '@/pages/api/home/home.context';
 
@@ -33,7 +31,7 @@ export const Chatbar = () => {
   });
 
   const {
-    state: { conversations, showChatbar, defaultModelId, folders },
+    state: { conversations, showChatbar, folders },
     dispatch: homeDispatch,
     handleCreateFolder,
     handleNewConversation,
@@ -63,24 +61,20 @@ export const Chatbar = () => {
   };
 
   const handleClearConversations = () => {
-    defaultModelId &&
       homeDispatch({
         field: 'selectedConversation',
         value: {
           id: uuidv4(),
           name: t('New Conversation'),
           messages: [],
-          model: OllamaModels[defaultModelId],
-          prompt: DEFAULT_SYSTEM_PROMPT,
-          temperature: DEFAULT_TEMPERATURE,
           folderId: null,
         },
       });
 
     homeDispatch({ field: 'conversations', value: [] });
 
-    localStorage.removeItem('conversationHistory');
-    localStorage.removeItem('selectedConversation');
+    sessionStorage.removeItem('conversationHistory');
+    sessionStorage.removeItem('selectedConversation');
 
     const updatedFolders = folders.filter((f) => f.type !== 'chat');
 
@@ -105,27 +99,23 @@ export const Chatbar = () => {
 
       saveConversation(updatedConversations[updatedConversations.length - 1]);
     } else {
-      defaultModelId &&
         homeDispatch({
           field: 'selectedConversation',
           value: {
             id: uuidv4(),
             name: t('New Conversation'),
             messages: [],
-            model: OllamaModels[defaultModelId],
-            prompt: DEFAULT_SYSTEM_PROMPT,
-            temperature: DEFAULT_TEMPERATURE,
             folderId: null,
           },
         });
 
-      localStorage.removeItem('selectedConversation');
+        sessionStorage.removeItem('selectedConversation');
     }
   };
 
   const handleToggleChatbar = () => {
     homeDispatch({ field: 'showChatbar', value: !showChatbar });
-    localStorage.setItem('showChatbar', JSON.stringify(!showChatbar));
+    sessionStorage.setItem('showChatbar', JSON.stringify(!showChatbar));
   };
 
   const handleDrop = (e: any) => {

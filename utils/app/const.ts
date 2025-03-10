@@ -1,9 +1,15 @@
-export const DEFAULT_SYSTEM_PROMPT =
-  process.env.NEXT_PUBLIC_DEFAULT_SYSTEM_PROMPT ||
-  "";
+export const nextEndPoints = {
+    chat: 'api/chat',
+};
 
-export const OLLAMA_HOST =
-  process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+export const webSocketMessageTypes = {
+    userMessage: 'user_message',
+    userInteractionMessage: 'user_interaction_message',
+    systemResponseMessage: 'system_response_message',
+    systemIntermediateMessage: 'system_intermediate_message',
+    systemInteractionMessage: 'system_interaction_message'
+}
 
-export const DEFAULT_TEMPERATURE = 
-  parseFloat(process.env.NEXT_PUBLIC_DEFAULT_TEMPERATURE || "1");
+export const appConfig = {
+    fileUploadEnabled : false
+}

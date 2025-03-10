@@ -1,3 +1,6 @@
-export const getEndpoint = () => {
-  return 'api/chat';
+import { nextEndPoints } from "./const";
+
+export const getEndpoint = ({ service = 'chat'}) => {
+  return nextEndPoints[service]
 };
+

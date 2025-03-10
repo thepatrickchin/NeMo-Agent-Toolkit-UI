@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQuery } from 'react-query';
+'use client'
+import { useEffect, useRef } from 'react';
 
 import { GetServerSideProps } from 'next';
 import { useTranslation } from 'next-i18next';
@@ -8,52 +8,41 @@ import Head from 'next/head';
 
 import { useCreateReducer } from '@/hooks/useCreateReducer';
 
-import useErrorService from '@/services/errorService';
-import useApiService from '@/services/useApiService';
 
 import {
   cleanConversationHistory,
   cleanSelectedConversation,
 } from '@/utils/app/clean';
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_TEMPERATURE } from '@/utils/app/const';
 import {
   saveConversation,
   saveConversations,
   updateConversation,
 } from '@/utils/app/conversation';
 import { saveFolders } from '@/utils/app/folders';
-import { savePrompts } from '@/utils/app/prompts';
 import { getSettings } from '@/utils/app/settings';
 
 import { Conversation } from '@/types/chat';
 import { KeyValuePair } from '@/types/data';
 import { FolderInterface, FolderType } from '@/types/folder';
-import { OllamaModelID, OllamaModels, fallbackModelID } from '@/types/ollama';
-import { Prompt } from '@/types/prompt';
 
 import { Chat } from '@/components/Chat/Chat';
 import { Chatbar } from '@/components/Chatbar/Chatbar';
 import { Navbar } from '@/components/Mobile/Navbar';
-import Promptbar from '@/components/Promptbar';
 
 import HomeContext from './home.context';
 import { HomeInitialState, initialState } from './home.state';
 
 import { v4 as uuidv4 } from 'uuid';
+import { getWorkflowName } from '@/utils/app/helper';
 
-interface Props {
-  defaultModelId: OllamaModelID;
-}
-
-const Home = ({ defaultModelId }: Props) => {
+const Home = (props: any) => {
   const { t } = useTranslation('chat');
-  const { getModels } = useApiService();
-  const { getModelsError } = useErrorService();
-  const [initialRender, setInitialRender] = useState<boolean>(true);
 
   const contextValue = useCreateReducer<HomeInitialState>({
     initialState,
   });
+
+  let workflow =  'AgentIQ';
 
   const {
     state: {
@@ -61,28 +50,11 @@ const Home = ({ defaultModelId }: Props) => {
       folders,
       conversations,
       selectedConversation,
-      prompts,
-      temperature,
     },
     dispatch,
   } = contextValue;
 
   const stopConversationRef = useRef<boolean>(false);
-
-  const { data, error, refetch } = useQuery(['GetModels'], () => getModels(), {
-    enabled: true,
-    refetchOnMount: false,
-  });
-
-  useEffect(() => {
-    if (data) dispatch({ field: 'models', value: data });
-  }, [data, dispatch]);
-
-  useEffect(() => {
-    dispatch({ field: 'modelError', value: getModelsError(error) });
-  }, [dispatch, error, getModelsError]);
-
-  // FETCH MODELS ----------------------------------------------
 
   const handleSelectConversation = (conversation: Conversation) => {
     dispatch({
@@ -125,21 +97,7 @@ const Home = ({ defaultModelId }: Props) => {
     });
 
     dispatch({ field: 'conversations', value: updatedConversations });
-    saveConversations(updatedConversations);
-
-    const updatedPrompts: Prompt[] = prompts.map((p) => {
-      if (p.folderId === folderId) {
-        return {
-          ...p,
-          folderId: null,
-        };
-      }
-
-      return p;
-    });
-
-    dispatch({ field: 'prompts', value: updatedPrompts });
-    savePrompts(updatedPrompts);
+    saveConversations(updatedConversations);;
   };
 
   const handleUpdateFolder = (folderId: string, name: string) => {
@@ -168,9 +126,6 @@ const Home = ({ defaultModelId }: Props) => {
       id: uuidv4(),
       name: t('New Conversation'),
       messages: [],
-      model: lastConversation?.model,
-      prompt: DEFAULT_SYSTEM_PROMPT,
-      temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
       folderId: null,
     };
 
@@ -212,11 +167,7 @@ const Home = ({ defaultModelId }: Props) => {
   }, [selectedConversation, dispatch]);
 
   useEffect(() => {
-    defaultModelId &&
-      dispatch({ field: 'defaultModelId', value: defaultModelId });
-  }, [defaultModelId, dispatch]);
-
-  useEffect(() => {
+    workflow = getWorkflowName()
     const settings = getSettings();
     if (settings.theme) {
       dispatch({
@@ -225,32 +176,17 @@ const Home = ({ defaultModelId }: Props) => {
       });
     }
 
-    if (window.innerWidth < 640) {
-      dispatch({ field: 'showChatbar', value: false });
-      dispatch({ field: 'showPromptbar', value: false });
-    }
-
-    const showChatbar = localStorage.getItem('showChatbar');
+    const showChatbar = sessionStorage.getItem('showChatbar');
     if (showChatbar) {
       dispatch({ field: 'showChatbar', value: showChatbar === 'true' });
     }
 
-    const showPromptbar = localStorage.getItem('showPromptbar');
-    if (showPromptbar) {
-      dispatch({ field: 'showPromptbar', value: showPromptbar === 'true' });
-    }
-
-    const folders = localStorage.getItem('folders');
+    const folders = sessionStorage.getItem('folders');
     if (folders) {
       dispatch({ field: 'folders', value: JSON.parse(folders) });
     }
 
-    const prompts = localStorage.getItem('prompts');
-    if (prompts) {
-      dispatch({ field: 'prompts', value: JSON.parse(prompts) });
-    }
-
-    const conversationHistory = localStorage.getItem('conversationHistory');
+    const conversationHistory = sessionStorage.getItem('conversationHistory');
     if (conversationHistory) {
       const parsedConversationHistory: Conversation[] =
         JSON.parse(conversationHistory);
@@ -261,7 +197,7 @@ const Home = ({ defaultModelId }: Props) => {
       dispatch({ field: 'conversations', value: cleanedConversationHistory });
     }
 
-    const selectedConversation = localStorage.getItem('selectedConversation');
+    const selectedConversation = sessionStorage.getItem('selectedConversation');
     if (selectedConversation) {
       const parsedSelectedConversation: Conversation =
         JSON.parse(selectedConversation);
@@ -281,14 +217,11 @@ const Home = ({ defaultModelId }: Props) => {
           id: uuidv4(),
           name: t('New Conversation'),
           messages: [],
-          model: OllamaModels[defaultModelId],
-          prompt: DEFAULT_SYSTEM_PROMPT,
-          temperature: lastConversation?.temperature ?? DEFAULT_TEMPERATURE,
           folderId: null,
         },
       });
     }
-  }, [defaultModelId, dispatch, t]);
+  }, [dispatch, t]);
 
   return (
     <HomeContext.Provider
@@ -303,13 +236,13 @@ const Home = ({ defaultModelId }: Props) => {
       }}
     >
       <Head>
-        <title>Chatbot Ollama</title>
-        <meta name="description" content="ChatGPT but local." />
+        <title>{workflow}</title>
+        <meta name="description" content={workflow} />
         <meta
           name="viewport"
           content="height=device-height ,width=device-width, initial-scale=1, user-scalable=no"
         />
-        <link rel="icon" href="/favicon.png" />
+        <link rel="icon" href="/nvidia.jpg" />
       </Head>
       {selectedConversation && (
         <main
@@ -322,14 +255,12 @@ const Home = ({ defaultModelId }: Props) => {
             />
           </div>
 
-          <div className="flex h-full w-full pt-[48px] sm:pt-0">
+          <div className="flex h-full w-full sm:pt-0">
             <Chatbar />
 
             <div className="flex flex-1">
-              <Chat stopConversationRef={stopConversationRef} />
+              <Chat />
             </div>
-
-            <Promptbar />
           </div>
         </main>
       )}
@@ -340,7 +271,7 @@ export default Home;
 
 export const getServerSideProps: GetServerSideProps = async ({ locale }) => {
   const defaultModelId = 
-  process.env.DEFAULT_MODEL || fallbackModelID;
+  process.env.DEFAULT_MODEL || '';
 
   return {
     props: {
