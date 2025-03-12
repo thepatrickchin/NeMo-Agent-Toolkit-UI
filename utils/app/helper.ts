@@ -199,9 +199,11 @@ export const escapeHtml = (str) => {
         if (typeof str !== 'string') {
             throw new TypeError('Input must be a string');
         }
-        return str.replace(/&/g, "&amp;")  // Escape &
-                    .replace(/</g, "&lt;")   // Escape <
-                    .replace(/>/g, "&gt;");  // Escape >
+        return str.replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     } catch (error) {
         console.error('Error in escapeHtml:', error);
         return ''; // Return an empty string in case of error
@@ -213,14 +215,24 @@ export const convertBackticksToPreCode = (markdown = '') => {
         if (typeof markdown !== 'string') {
             throw new TypeError('Input must be a string');
         }
-        return markdown.replace(/```(\w+)?\n([\s\S]*?)\n```/g, (_, lang, code) => {
-            const languageClass = lang ? ` class="language-${lang}"` : '';
-            const escapedCode = escapeHtml(code); // Preserve quotes
-            return `\n<pre><code${languageClass}>${escapedCode}</code></pre>\n`;
-        });
+
+        // Step 1: Convert code blocks first
+        markdown = markdown.replace(
+            /```(\w+)?\n([\s\S]*?)\n```/g,
+            (_, lang, code) => {
+                const languageClass = lang ? ` class="language-${lang}"` : '';
+                const escapedCode = escapeHtml(code);
+                return `\n<pre><code${languageClass}>${escapedCode}</code></pre>\n`;
+            }
+        );
+
+        // Step 2: Convert bold text **bold**
+        markdown = markdown.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+        return markdown;
     } catch (error) {
         console.error('Error in convertBackticksToPreCode:', error);
-        return markdown; // Return the original markdown in case of error
+        return markdown;
     }
 };
 
