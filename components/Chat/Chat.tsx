@@ -287,7 +287,7 @@ export const Chat = () => {
           message = {...message, index}
 
           // process IntermediateSteps 
-          let processedIntermediateSteps = (message?.type === webSocketMessageTypes.systemIntermediateMessage) ? processIntermediateMessage(msg.intermediateSteps, message, intermediateStepOverride) : msg.intermediateSteps
+          let processedIntermediateSteps = (message?.type === webSocketMessageTypes.systemIntermediateMessage) ? processIntermediateMessage(msg.intermediateSteps, message, sessionStorage.getItem('intermediateStepOverride') === 'false' ? false : intermediateStepOverride) : msg.intermediateSteps
           if(message?.type === webSocketMessageTypes.systemInteractionMessage){ 
             msg?.humanInteractionMessages.push(message)
           }
@@ -609,7 +609,7 @@ export const Chat = () => {
                 // loop through rawIntermediateSteps and add them to the processedIntermediateSteps
                 let processedIntermediateSteps = []
                 rawIntermediateSteps.forEach((step) => {
-                  processedIntermediateSteps = processIntermediateMessage(processedIntermediateSteps, step, sessionStorage.getItem('intermediateStepOverride') || intermediateStepOverride)
+                  processedIntermediateSteps = processIntermediateMessage(processedIntermediateSteps, step, sessionStorage.getItem('intermediateStepOverride') === 'false' ? false : intermediateStepOverride )
                 })
 
                 // update the message
@@ -640,7 +640,7 @@ export const Chat = () => {
                       // need to loop through raw rawIntermediateSteps and add them to the updatedIntermediateSteps
                       let updatedIntermediateSteps = [...message?.intermediateSteps]
                       rawIntermediateSteps.forEach((step) => {
-                        updatedIntermediateSteps = processIntermediateMessage(updatedIntermediateSteps, step, sessionStorage.getItem('intermediateStepOverride') || intermediateStepOverride)
+                        updatedIntermediateSteps = processIntermediateMessage(updatedIntermediateSteps, step, sessionStorage.getItem('intermediateStepOverride') === 'false' ? false : intermediateStepOverride)
                       })
 
                       // update the message
