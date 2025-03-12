@@ -74,6 +74,11 @@ export const Chat = () => {
   let websocketLoadingToastId = null;
   const lastScrollTop = useRef(0); // Store last known scroll position
 
+  // Add these variables near the top of your component
+  const isUserInitiatedScroll = useRef(false);
+  const scrollTimeout = useRef(null);
+
+
   const openModal = (data : any = {}) => {
     setInteractionMessage(data);
     setModalOpen(true);
@@ -756,23 +761,63 @@ export const Chat = () => {
     }
   }, [messageIsStreaming]);
 
-  const handleScroll = useCallback(() => {
-    if (chatContainerRef.current) {
-      const { scrollTop } = chatContainerRef.current;
+  // Add an effect to set up wheel and touchmove event listeners
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
 
-      // Detect scroll direction
-      // const isScrollingUp = scrollTop < lastScrollTop.current; 
-      const isScrollingUp = (lastScrollTop.current - scrollTop) > 0;
-      // Only disable auto-scroll if the user scrolls up, not when auto-scrolling
-      if (isScrollingUp && autoScrollEnabled) {
-        setAutoScrollEnabled(false);
-        homeDispatch({ field: 'autoScroll', value: false });
-        setShowScrollDownButton(true);
+    // Function to handle user input events (mouse wheel, touch)
+    const handleUserInput = () => {
+      // Mark this as user-initiated scrolling
+      isUserInitiatedScroll.current = true;
+      
+      // Reset the flag after a short delay
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
       }
+      scrollTimeout.current = setTimeout(() => {
+        isUserInitiatedScroll.current = false;
+      }, 200);
+    };
 
-      lastScrollTop.current = scrollTop; // Update last scroll position
+    // Add event listeners for user interactions
+    container.addEventListener('wheel', handleUserInput, { passive: true });
+    container.addEventListener('touchmove', handleUserInput, { passive: true });
+    
+    return () => {
+      // Clean up
+      container.removeEventListener('wheel', handleUserInput);
+      container.removeEventListener('touchmove', handleUserInput);
+      if (scrollTimeout.current) {
+        clearTimeout(scrollTimeout.current);
+      }
+    };
+  }, [chatContainerRef.current]); // Only re-run if the container ref changes
+
+// Now modify your handleScroll function to use this flag
+  const handleScroll = useCallback(() => {
+    if (!chatContainerRef.current || !isUserInitiatedScroll.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    const isScrollingUp = scrollTop < lastScrollTop.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 20;
+    
+    // Only disable auto-scroll if it's a user-initiated upward scroll
+    if (isScrollingUp && autoScrollEnabled && messageIsStreaming) {
+      setAutoScrollEnabled(false);
+      homeDispatch({ field: 'autoScroll', value: false });
+      setShowScrollDownButton(true);
     }
-  }, [autoScrollEnabled]);
+    
+    // Re-enable auto-scroll if user scrolls to bottom
+    if (isAtBottom && !autoScrollEnabled) {
+      setAutoScrollEnabled(true);
+      homeDispatch({ field: 'autoScroll', value: true });
+      setShowScrollDownButton(false);
+    }
+    
+    lastScrollTop.current = scrollTop;
+  }, [autoScrollEnabled, messageIsStreaming]);
 
   const handleScrollDown = () => {
     chatContainerRef.current?.scrollTo({
