@@ -121,80 +121,101 @@ export const fetchLastMessage = ({messages = [], role = 'user'}) => {
 
 export const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-export const processIntermediateMessage = (existingSteps = [], newMessage = {}, intermediateStepOverride = true) => {
-    // console.log('Starting processIntermediateMessage:', { newMessage });
-    
-    try {
-        // overriding previous message with new message if intermediateStepOverride = true and id is matching
-        if (intermediateStepOverride) {
-            const replaceMessage = (steps) => {
-                for (let i = 0; i < steps.length; i++) {
-                    if (steps[i].id === newMessage?.id) {
-
-                        // preserve the index so that we still have messages in order
-                        let overrideMessage = {
-                            ...newMessage,
-                            index: steps[i].index
-                        }
-
-                        steps[i] = overrideMessage;
-                        return true;
-                    }
-
-                    // also look thru children intermediate steps inside each intermediate step
-                    if (steps[i].intermediate_steps) {
-                        if (replaceMessage(steps[i].intermediate_steps)) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            };
-
-            if (!replaceMessage(existingSteps)) {
-                // console.log('No matching message found, adding as new step');
-                existingSteps.push(newMessage);
-            }
-            return existingSteps;
-        }
-
-        const findParentStep = (steps, parentId) => {
-            // console.log('Searching for parent with ID:', parentId);
-            for (const step of steps) {
-                if (step.id === parentId) {
-                    // console.log('Found parent step:', step);
-                    return step;
-                }
-                if (step.intermediate_steps) {
-                    const found = findParentStep(step.intermediate_steps, parentId);
-                    if (found) return found;
-                }
-            }
-            return null;
-        };
-
-        const matchingParentStep = findParentStep(existingSteps, newMessage?.intermediate_parent_id);
-
-        if (matchingParentStep) {
-            // console.log('Adding to existing parent:', matchingParentStep.id);
-            if (!matchingParentStep.intermediate_steps) {
-                matchingParentStep.intermediate_steps = [];
-            }
-            matchingParentStep.intermediate_steps.push(newMessage);
-        } else {
-            // console.log('Adding as root level message');
-            existingSteps.push(newMessage);
-        }
-
-        // console.log('Processing completed successfully');
-        return existingSteps;
-    } catch (error) {
-        console.error('Error in processIntermediateMessage:', error);
-        return existingSteps;
-    }
+interface IntermediateStep {
+    id: string;
+    parent_id?: string;
+    index?: number;
+    content?: any;
+    intermediate_steps?: IntermediateStep[];
+    [key: string]: any; // For any additional properties
 }
 
-export const escapeHtml = (str) => {
+export const processIntermediateMessage = (
+    existingSteps: IntermediateStep[] = [], 
+    newMessage: IntermediateStep = {} as IntermediateStep, 
+    intermediateStepOverride = true
+): IntermediateStep[] => {
+
+    if (!newMessage.id) {
+        console.log('Skipping message processing - no message ID provided');
+        return existingSteps;
+    }
+
+    // Helper function to find and replace a message in the steps tree
+    const replaceMessage = (steps: IntermediateStep[]): boolean => {
+        for (let i = 0; i < steps.length; i++) {
+            if (steps[i].id === newMessage.id && steps[i].content?.name === newMessage.content?.name) {        
+                // Preserve the index when overriding
+                steps[i] = {
+                    ...newMessage,
+                    index: steps[i].index
+                };
+                return true;
+            }
+
+            // Recursively check intermediate steps
+            const intermediateSteps = steps[i].intermediate_steps;
+            if (intermediateSteps && intermediateSteps.length > 0) {
+                if (replaceMessage(intermediateSteps)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    // Helper function to find a parent step by ID
+    const findParentStep = (steps: IntermediateStep[], parentId: string): IntermediateStep | null => {
+        for (const step of steps) {
+            if (step.id === parentId) {
+                return step;
+            }
+            const intermediateSteps = step.intermediate_steps;
+            if (intermediateSteps && intermediateSteps.length > 0) {
+                const found = findParentStep(intermediateSteps, parentId);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    try {
+        // If override is enabled and message exists, try to replace it
+        if (intermediateStepOverride) {
+            const wasReplaced = replaceMessage(existingSteps);
+            if (wasReplaced) {
+                return existingSteps;
+            }
+        }
+
+        // If message wasn't replaced or override is disabled, add it to the appropriate place
+        if (newMessage.parent_id) {
+            const parentStep = findParentStep(existingSteps, newMessage.parent_id);
+            if (parentStep) {
+                // Initialize intermediate_steps array if it doesn't exist
+                if (!parentStep.intermediate_steps) {
+                    parentStep.intermediate_steps = [];
+                }
+                parentStep.intermediate_steps.push(newMessage);
+                return existingSteps;
+            }
+        }
+
+        // If no parent found or no parent_id, add to root level
+        existingSteps.push(newMessage);
+        return existingSteps;
+
+    } catch (error) {
+        console.log('Error in processIntermediateMessage:', {
+            error,
+            messageId: newMessage.id,
+            parentId: newMessage.parent_id
+        });
+        return existingSteps;
+    }
+};
+
+export const escapeHtml = (str: string): string => {
     try {
         if (typeof str !== 'string') {
             throw new TypeError('Input must be a string');
@@ -236,8 +257,8 @@ export const convertBackticksToPreCode = (markdown = '') => {
     }
 };
 
-export const generateContentIntermediate = (intermediateSteps = []) => {
-    const generateDetails = (data) => {
+export const generateContentIntermediate = (intermediateSteps: IntermediateStep[] = []): string => {
+    const generateDetails = (data: IntermediateStep[]): string => {
         try {
             if (!Array.isArray(data)) {
                 throw new TypeError('Input must be an array');
@@ -245,15 +266,12 @@ export const generateContentIntermediate = (intermediateSteps = []) => {
             return data.map((item) => {
                 const currentId = item.id;
                 const currentIndex = item.index;
-                const sanitizedPayload = convertBackticksToPreCode(item.content.payload);
-                // const sanitizedPayload = item.content.payload
+                const sanitizedPayload = convertBackticksToPreCode(item.content?.payload || '');
                 let details = `<details id=${currentId} index=${currentIndex}>\n`;
-                details += `  <summary id=${currentId}>${item.content.name}</summary>\n`;
+                details += `  <summary id=${currentId}>${item.content?.name || ''}</summary>\n`;
 
-                // need to add \n to beginning and end to preseve markdown content    
                 details += `\n${sanitizedPayload}\n`;
 
-                // Recursively handle nested intermediate steps
                 if (item.intermediate_steps && item.intermediate_steps.length > 0) {
                     details += generateDetails(item.intermediate_steps);
                 }
@@ -268,23 +286,21 @@ export const generateContentIntermediate = (intermediateSteps = []) => {
     };
 
     try {
-        if (!Array.isArray(intermediateSteps)) {
-            // console.log('error - input must be an array of intermediate steps');
-            return ''
-        }
-        if (intermediateSteps.length === 0) {
+        if (!Array.isArray(intermediateSteps) || intermediateSteps.length === 0) {
             return '';
         }
-        let intermeditateContent = generateDetails(intermediateSteps);
-        // intermeditateContent =  `<intermediate>\n${intermeditateContent}</intermediate>`;
-        intermeditateContent =  `<details id=${uuidv4()} index="-1" ><summary id=${intermediateSteps[0].parent_id}>Intermediate Steps</summary>\n${intermeditateContent}</details>`;
-        if (/(?:\\)?```/.test(intermeditateContent)) {
-            intermeditateContent = intermeditateContent.replace(/\n{2,}/g, '\n');
-          }
-        return intermeditateContent;
+        let intermediateContent = generateDetails(intermediateSteps);
+        const firstStep = intermediateSteps[0];
+        if (firstStep && firstStep.parent_id) {
+            intermediateContent = `<details id=${uuidv4()} index="-1" ><summary id=${firstStep.parent_id}>Intermediate Steps</summary>\n${intermediateContent}</details>`;
+        }
+        if (/(?:\\)?```/.test(intermediateContent)) {
+            intermediateContent = intermediateContent.replace(/\n{2,}/g, '\n');
+        }
+        return intermediateContent;
     } catch (error) {
-        // console.log('error in generateIntermediateMarkdown:', error);
-        return ''; // Return an empty string in case of error
+        console.error('error in generateIntermediateMarkdown:', error);
+        return '';
     }
 };
 
@@ -345,4 +361,6 @@ export const fixMalformedHtml = (content = '') => {
         return content; // Return original if fixing fails
     }
 };
+
+
 
