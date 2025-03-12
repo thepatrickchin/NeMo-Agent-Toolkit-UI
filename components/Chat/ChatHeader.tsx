@@ -15,7 +15,7 @@ import { getWorkflowName } from '@/utils/app/helper';
 
 export const ChatHeader = ({ webSocketModeRef = {} }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(process?.env?.NEXT_PUBLIC_RIGHT_MENU_OPEN === 'true' ? true : false);
     const menuRef = useRef(null);
 
     const workflow = getWorkflowName()
@@ -69,7 +69,9 @@ export const ChatHeader = ({ webSocketModeRef = {} }) => {
             {/* Collapsible Menu */}
             <div className={`fixed right-0 top-0 h-12 flex items-center transition-all duration-300 ${isExpanded ? 'mr-2' : 'mr-2'}`}>
                 <button 
-                    onClick={() => setIsExpanded(!isExpanded)}
+                    onClick={() => {
+                        setIsExpanded(!isExpanded)}
+                    }
                     className="flex p-1 text-black dark:text-white transition-colors"
                 >
                     {isExpanded ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />}
