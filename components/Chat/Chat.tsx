@@ -267,12 +267,12 @@ export const Chat = () => {
     // if this is the first message (of the assistant response to user message), then add the message to the conversation as 'assistant' message
     // else append the message to the exisiting assistant message (part of the stream appending)
     // look through the conversation messages and find if a assistant message has id = parentId
-    const assistantMessage = selectedConversation?.messages?.find((msg) => msg.role === 'assistant' && msg.parentId === message?.parent_id)
-    if(assistantMessage) {
+    const isLastMessageFromAssistant = selectedConversation?.messages[selectedConversation?.messages?.length - 1].role === 'assistant'
+    if(isLastMessageFromAssistant) {
       // console.log('found assistant message, appending to it')
       // update the assistant message inside selectedConversation
-      updatedMessages = selectedConversation?.messages?.map((msg) => {
-        if (msg.role === 'assistant' && msg.parentId === message?.parent_id) {
+      updatedMessages = selectedConversation?.messages?.map((msg, idx) => {
+        if (msg.role === 'assistant' && idx === selectedConversation?.messages?.length - 1) {
           // do this only for response token
           let updatedContent = msg.content || '';
           if(message?.type === webSocketMessageTypes.systemResponseMessage) {
