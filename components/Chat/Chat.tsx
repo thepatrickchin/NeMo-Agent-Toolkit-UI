@@ -272,60 +272,56 @@ export const Chat = () => {
       // console.log('found assistant message, appending to it')
       // update the assistant message inside selectedConversation
       updatedMessages = selectedConversation?.messages?.map((msg) => {
-
-        // console.log('updating assistant message', msg?.content, message?.content?.text, message?.parent_id)
-        // update the assistant message with content from new message
         if (msg.role === 'assistant' && msg.parentId === message?.parent_id) {
-
-          // todo fix space or add without space
-          // add new message content to exsiting content
-
           // do this only for response token
-          let updatedContent = ''
+          let updatedContent = msg.content || '';
           if(message?.type === webSocketMessageTypes.systemResponseMessage) {
-            updatedContent = msg.content + (message?.content?.text || '');
+            updatedContent = updatedContent + (message?.content?.text || '');
           }
 
           // find index for new message
           // it can be the length of the intermediate messages last one
-          let index = msg?.intermediateSteps?.length
+          let index = msg?.intermediateSteps?.length || 0;
           message = {...message, index}
 
           // process IntermediateSteps 
-          let processedIntermediateSteps = (message?.type === webSocketMessageTypes.systemIntermediateMessage) ? processIntermediateMessage(msg.intermediateSteps, message, sessionStorage.getItem('intermediateStepOverride') === 'false' ? false : intermediateStepOverride) : msg.intermediateSteps
+          let processedIntermediateSteps = (message?.type === webSocketMessageTypes.systemIntermediateMessage) 
+            ? processIntermediateMessage(msg.intermediateSteps || [], message, sessionStorage.getItem('intermediateStepOverride') === 'false' ? false : intermediateStepOverride) 
+            : msg.intermediateSteps || [];
+
           if(message?.type === webSocketMessageTypes.systemInteractionMessage){ 
-            msg?.humanInteractionMessages.push(message)
+            msg.humanInteractionMessages = msg.humanInteractionMessages || [];
+            msg.humanInteractionMessages.push(message);
           }
           if(message?.type === 'error') {
-            msg?.errorMessages.push(message)
+            msg.errorMessages = msg.errorMessages || [];
+            msg.errorMessages.push(message);
           } 
 
           // update the assistant message with new content and processed intermediate steps
-          let updatedMessage = { 
+          return { 
             ...msg, 
             content: updatedContent,  
             intermediateSteps: processedIntermediateSteps,
+            humanInteractionMessages: msg.humanInteractionMessages || [],
+            errorMessages: msg.errorMessages || []
           };
-          
-          return updatedMessage
         }
         return msg;
       });
-    }
-
-    else {
+    } else {
       // console.log('didnt find assistant message, adding new one (first chunk of response)')
       // add the new message to the conversation as 'assistant' message
       updatedMessages = [
-        ...selectedConversation?.messages,
+        ...(selectedConversation?.messages || []),
         { 
           role: 'assistant', 
           id: message?.id, 
           parentId: message?.parent_id,
-          content: message?.content?.text ? message?.content?.text : '',
-          intermediateSteps: (message?.type === webSocketMessageTypes.systemIntermediateMessage)  ? [{...message, index: 0}] : [], // add the message as an intermediate step if it's an intermediate message else add an empty array
-          humanInteractionMessages: (message?.type === webSocketMessageTypes.systemInteractionMessage)  ? [message] : [], // add the message as an humanInteractionMessage  else add an empty array
-          errorMessages: message?.type === 'error' ? [message] : [] // add the message as an humanInteractionMessage  else add an empty array
+          content: message?.content?.text || '',
+          intermediateSteps: (message?.type === webSocketMessageTypes.systemIntermediateMessage) ? [{...message, index: 0}] : [], 
+          humanInteractionMessages: (message?.type === webSocketMessageTypes.systemInteractionMessage) ? [message] : [], 
+          errorMessages: message?.type === 'error' ? [message] : [] 
         },
       ];
     }
@@ -344,14 +340,15 @@ export const Chat = () => {
     saveConversation(updatedConversation);
 
     // update the conversations
-    const updatedConversations: Conversation[] = conversations?.map(
+    const updatedConversations = conversations?.map(
       (conversation) => {
         if (conversation.id === updatedConversation?.id) {
           return updatedConversation;
         }
         return conversation;
       },
-    );
+    ) || [];
+    
     if (updatedConversations.length === 0) {
       updatedConversations.push(updatedConversation);
     }
@@ -558,12 +555,13 @@ export const Chat = () => {
             let done = false;
             let isFirst = true;
             let text = '';
-            let counter = 1
+            let counter = 1;
             let partialIntermediateStep = ''; // Add this to store partial chunks
             while (!done) {
               const { value, done: doneReading } = await reader.read();
               done = doneReading;
               let chunkValue = decoder.decode(value);
+              counter++;
 
               // First, handle any partial chunk from previous iteration
               if (partialIntermediateStep) {
@@ -605,7 +603,6 @@ export const Chat = () => {
               }
 
               text = text + chunkValue;
-              // console.log(text)
 
               homeDispatch({ field: 'loading', value: false });
               if (isFirst) {
