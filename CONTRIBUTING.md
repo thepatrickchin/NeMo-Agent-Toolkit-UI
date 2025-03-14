@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-**Welcome to Chatbot Ollama!**
+**Welcome to AgentIQ-UI**
 
 We appreciate your interest in contributing to our project.
 
@@ -17,13 +17,13 @@ We welcome the following types of contributions:
 - Translations
 - Tests
 
-## Getting Started
+## Get Started
 
 To get started, fork the project on GitHub and clone it locally on your machine. Then, create a new branch to work on your changes.
 
 ```bash
-git clone https://github.com/ivanfioravanti/chatbot-ollama.git
-cd chatbot-ollama
+git clone https://github.com/NVIDIA/AgentIQ-UI.git
+cd AgentIQ-UI
 git checkout -b my-branch-name
 ```
 
@@ -39,6 +39,3 @@ Before submitting your pull request, please make sure your changes pass our auto
 6. Commit your changes and push them to your forked repository.
 7. Submit a pull request to the main branch of the main repository.
 
-## Contact
-
-If you have any questions or need help getting started, feel free to reach out to me on [X](https://x.com/ivanfioravanti).
