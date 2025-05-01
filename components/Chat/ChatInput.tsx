@@ -29,6 +29,7 @@ import { Message } from '@/types/chat';
 import HomeContext from '@/pages/api/home/home.context';
 import { compressImage, getWorkflowName } from '@/utils/app/helper';
 import { appConfig } from '@/utils/app/const';
+import toast from 'react-hot-toast';
 
 
 interface Props {
@@ -112,8 +113,8 @@ export const ChatInput = ({
       setIsRecording(false);
     }
 
-    if (!content && !inputFile && !inputFileContent) {
-      alert(t('Please enter a message or attach an image'));
+    if (!content.trim() && !inputFile && !inputFileContent) {
+      toast.error(t('Please enter a message'));
       return;
     }
 
