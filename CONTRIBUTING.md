@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-**Welcome to AIQToolkit-UI**
+**Welcome to AIQ Toolkit-UI**
 
 We appreciate your interest in contributing to our project.
 
@@ -22,8 +22,8 @@ We welcome the following types of contributions:
 To get started, fork the project on GitHub and clone it locally on your machine. Then, create a new branch to work on your changes.
 
 ```bash
-git clone https://github.com/NVIDIA/AIQToolkit-UI.git
-cd AIQToolkit-UI
+git clone https://github.com/NVIDIA/AIQ Toolkit-UI.git
+cd AIQ Toolkit-UI
 git checkout -b my-branch-name
 ```
 

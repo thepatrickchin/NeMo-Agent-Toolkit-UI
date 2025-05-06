@@ -1,9 +1,9 @@
-# AIQToolkit - UI
+# AIQ Toolkit - UI
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![AIQToolkit](https://img.shields.io/badge/AIQToolkit-Frontend-green)](https://github.com/NVIDIA/AIQToolkit)
+[![AIQ Toolkit](https://img.shields.io/badge/AIQ Toolkit-Frontend-green)](https://github.com/NVIDIA/AIQ Toolkit)
 
-This is the official frontend user interface component for [AIQToolkit](https://github.com/NVIDIA/AIQToolkit), an open-source library for building AI agents and workflows.
+This is the official frontend user interface component for [AIQ Toolkit](https://github.com/NVIDIA/AIQ Toolkit), an open-source library for building AI agents and workflows.
 
 This project builds upon the work of:
 - [chatbot-ui](https://github.com/mckaywrigley/chatbot-ui) by Mckay Wrigley
@@ -20,7 +20,7 @@ This project builds upon the work of:
 ## Getting Started
 
 ### Prerequisites
-- [AIQToolkit](https://github.com/NVIDIA/AIQToolkit) installed and configured
+- [AIQ Toolkit](https://github.com/NVIDIA/AIQ Toolkit) installed and configured
 - Git
 - Node.js (v18 or higher)
 - npm or Docker
@@ -29,8 +29,8 @@ This project builds upon the work of:
 
 Clone the repository:
 ```bash
-git clone git@github.com:NVIDIA/AIQToolkit-UI.git
-cd AIQToolkit-UI
+git clone git@github.com:NVIDIA/AIQ Toolkit-UI.git
+cd AIQ Toolkit-UI
 ```
 
 Install dependencies:
@@ -49,22 +49,22 @@ The application will be available at `http://localhost:3000`
 #### Docker Deployment
 ```bash
 # Build the Docker image
-docker build -t AIQToolkit-UI .
+docker build -t AIQ Toolkit-UI .
 
 # Run the container with environment variables from .env
 # Ensure the .env file is present before running this command.
 # Skip --env-file .env if no overrides are needed.
-docker run --env-file .env -p 3000:3000 AIQToolkit-UI
+docker run --env-file .env -p 3000:3000 AIQ Toolkit-UI
 ```
 
-![AIQToolkit Web User Interface](public/screenshots/ui_home_page.png)
+![AIQ Toolkit Web User Interface](public/screenshots/ui_home_page.png)
 
 ## Configuration
 
 ### HTTP API Connection
 Settings can be configured by selecting the `Settings` icon located on the bottom left corner of the home page.
 
-![AIQToolkit Web UI Settings](public/screenshots/ui_generate_example_settings.png)
+![AIQ Toolkit Web UI Settings](public/screenshots/ui_generate_example_settings.png)
 
 ### Settings Options
 NOTE: Most of the time, you will want to select /chat/stream for intermediate results streaming.
@@ -75,7 +75,7 @@ NOTE: Most of the time, you will want to select /chat/stream for intermediate re
   - /generate/stream - Streaming response generation
   - /chat - Single response chat completion
   - /chat/stream - Streaming chat completion
-- `WebSocket URL for Completion`: WebSocket URL to connect to running AIQToolkit server
+- `WebSocket URL for Completion`: WebSocket URL to connect to running AIQ Toolkit server
 - `WebSocket Schema`: Workflow schema type over WebSocket connection
 
 ## Usage Examples
@@ -83,8 +83,8 @@ NOTE: Most of the time, you will want to select /chat/stream for intermediate re
 ### Simple Calculator Example
 
 #### Setup and Configuration
-1. Set up [AIQToolkit](https://github.com/NVIDIA/AIQToolkit/blob/main/docs/source/1_intro/getting_started.md) 
-2. Start workflow by following the [Simple Calculator Example](https://github.com/NVIDIA/AIQToolkit/blob/main/examples/simple_calculator/README.md)
+1. Set up [AIQ Toolkit](https://github.com/NVIDIA/AIQ Toolkit/blob/main/docs/source/1_intro/getting_started.md) 
+2. Start workflow by following the [Simple Calculator Example](https://github.com/NVIDIA/AIQ Toolkit/blob/main/examples/simple_calculator/README.md)
 ```bash
 aiq serve --config_file=examples/simple_calculator/configs/config.yml
 ```
@@ -95,13 +95,13 @@ Interact with the chat interface by prompting the agent with the message:
 Is 4 + 4 greater than the current hour of the day?
 ```
 
-![AIQToolkit Web UI Workflow Result](public/screenshots/ui_generate_example.png)
+![AIQ Toolkit Web UI Workflow Result](public/screenshots/ui_generate_example.png)
 
 ### Human In The Loop (HITL) Example
 
 #### Setup and Configuration
-1. Set up [AIQToolkit](https://github.com/NVIDIA/AIQToolkit/blob/main/docs/source/1_intro/getting_started.md) 
-2. Start workflow by following the [HITL Example](https://github.com/NVIDIA/AIQToolkit/blob/main/examples/simple_human_in_the_loop/README.md)
+1. Set up [AIQ Toolkit](https://github.com/NVIDIA/AIQ Toolkit/blob/main/docs/source/1_intro/getting_started.md) 
+2. Start workflow by following the [HITL Example](https://github.com/NVIDIA/AIQ Toolkit/blob/main/examples/simple_human_in_the_loop/README.md)
 ```bash
 aiq serve --config_file=examples/simple_human_in_the_loop/configs/config.yml
 ```
@@ -109,7 +109,7 @@ aiq serve --config_file=examples/simple_human_in_the_loop/configs/config.yml
 #### Configuring HITL Settings
 Enable WebSocket mode in the settings panel for bidirectional real-time communication between the client and server.
 
-![AIQToolkit Web UI HITL Settings](public/screenshots/hitl_settings.png)
+![AIQ Toolkit Web UI HITL Settings](public/screenshots/hitl_settings.png)
 
 #### Example Conversation
 1. Send the following prompt:
@@ -119,16 +119,16 @@ Can you process my input and display the result for the given prompt: How are yo
 
 2. Enter your response when prompted:
 
-![AIQToolkit Web UI HITL Prompt](public/screenshots/hitl_prompt.png)
+![AIQ Toolkit Web UI HITL Prompt](public/screenshots/hitl_prompt.png)
 
 3. Monitor the result:
 
-![AIQToolkit Web UI HITL Prompt](public/screenshots/hitl_result.png)
+![AIQ Toolkit Web UI HITL Prompt](public/screenshots/hitl_result.png)
 
 ## API Integration
 
 ### Server Communication
-The UI supports both HTTP requests (OpenAI compatible) and WebSocket connections for server communication. For detailed information about WebSocket messaging integration, please refer to the [WebSocket Documentation](https://github.com/NVIDIA/AIQToolkit/blob/main/docs/5_advanced/websockets.md) in the AIQToolkit documentation.
+The UI supports both HTTP requests (OpenAI compatible) and WebSocket connections for server communication. For detailed information about WebSocket messaging integration, please refer to the [WebSocket Documentation](https://github.com/NVIDIA/AIQ Toolkit/blob/main/docs/5_advanced/websockets.md) in the AIQ Toolkit documentation.
 
 
 

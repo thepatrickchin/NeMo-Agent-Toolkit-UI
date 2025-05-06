@@ -1,4 +1,4 @@
-AIQToolkit-UI Third-Party Licenses
+AIQ Toolkit-UI Third-Party Licenses
 =================================
 
 This file contains third-party license information for software packages used in this project.
