@@ -13,12 +13,12 @@ export const getReactMarkDownCustomComponents = (messageIndex = 0, messageId = '
   return useMemo(() => ({
     code: memo(
       ({ node, inline, className, children, ...props }: { children: React.ReactNode; [key: string]: any }) => {
-        if (children?.length) {
-          if (children[0] === '▍') {
-            return <span className="animate-pulse cursor-default mt-1">▍</span>;
-          }
-          children[0] = (children[0] as string).replace("`▍`", "▍");
-        }
+        // if (children?.length) {
+        //   if (children[0] === '▍') {
+        //     return <span className="animate-pulse cursor-default mt-1">▍</span>;
+        //   }
+        //   children[0] = children.length > 0 ? (children[0] as string)?.replace("`▍`", "▍") : '';
+        // }
   
         const match = /language-(\w+)/.exec(className || '');
   
