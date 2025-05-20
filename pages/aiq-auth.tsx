@@ -32,6 +32,7 @@ function PromptModal({ onSubmit, initialValue, initialDomain }: PromptModalProps
               onChange={(e) => setDomain(e.target.value)}
               className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded mb-4 bg-white dark:bg-[#40414F] text-black dark:text-white"
               placeholder="Enter domain URL..."
+              autoComplete="off"
             />
           </div>
           <div>
@@ -46,6 +47,7 @@ function PromptModal({ onSubmit, initialValue, initialDomain }: PromptModalProps
               className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded mb-4 bg-white dark:bg-[#40414F] text-black dark:text-white"
               placeholder="Enter consent prompt key..."
               autoFocus
+              autoComplete="off"
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -62,7 +64,7 @@ function PromptModal({ onSubmit, initialValue, initialDomain }: PromptModalProps
   );
 }
 
-export default function AuthPage() {
+export default function AIQAuthPage() {
   const [showPrompt, setShowPrompt] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +142,7 @@ export default function AuthPage() {
       )}
 
       <div className="container mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-4 text-black dark:text-white">Authentication</h1>
+        <h1 className="text-2xl font-bold mb-4 text-black dark:text-white">Agent IQ Authentication</h1>
         
         {error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
