@@ -518,6 +518,7 @@ export const Chat = () => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Thread-Id': selectedConversation?.id || '',
             },
             signal: controllerRef.current.signal, // Use ref here
             body,

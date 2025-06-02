@@ -56,6 +56,7 @@ const handler = async (req: Request): Promise<Response> => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Thread-Id': req.headers.get('Thread-Id') || '',
       },
       body: JSON.stringify(payload),
     });
