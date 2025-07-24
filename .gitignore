@@ -24,6 +24,9 @@ package-lock.json
 # environment files
 public/__ENV.js
 
+# TypeScript build cache
+*.tsbuildinfo
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

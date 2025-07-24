@@ -240,6 +240,12 @@ export const Chat = () => {
 
     // handling human in the loop messages
     if(message?.type === webSocketMessageTypes.systemInteractionMessage) {
+      // Check for OAuth consent message and automatically open auth page.
+      if(message?.content?.input_type === 'oauth_consent') {
+        window.open('/aiq-auth', '_blank');
+        return; // Don't process further or show modal
+      }
+
       openModal(message)
     }
 
