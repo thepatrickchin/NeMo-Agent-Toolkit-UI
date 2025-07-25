@@ -240,6 +240,35 @@ export const Chat = () => {
 
     // handling human in the loop messages
     if(message?.type === webSocketMessageTypes.systemInteractionMessage) {
+      // Check for OAuth consent message and automatically open OAuth URL directly
+      if(message?.content?.input_type === 'oauth_consent') {
+        // Expect the OAuth URL to be directly in the message content
+        const oauthUrl = message?.content?.oauth_url || message?.content?.redirect_url || message?.content?.text;
+        if (oauthUrl) {
+          // Open the OAuth URL directly in a popup window
+          const popup = window.open(
+            oauthUrl,
+            'oauth-popup',
+            'width=600,height=700,scrollbars=yes,resizable=yes'
+          );
+          
+          // Optional: Set up message listener for OAuth completion
+          const handleOAuthComplete = (event: MessageEvent) => {
+            // You can handle OAuth completion messages here if needed
+            console.log('OAuth flow completed:', event.data);
+            if (popup && !popup.closed) {
+              popup.close();
+            }
+            window.removeEventListener('message', handleOAuthComplete);
+          };
+          window.addEventListener('message', handleOAuthComplete);
+        } else {
+          console.error('OAuth consent message received but no URL found in content:', message?.content);
+          toast.error('OAuth URL not found in message content');
+        }
+        return; // Don't process further or show modal
+      }
+
       openModal(message)
     }
 
