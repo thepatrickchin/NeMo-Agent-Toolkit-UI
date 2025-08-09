@@ -1,10 +1,28 @@
+
 'use client';
 
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import toast from 'react-hot-toast';
-
-import { useTranslation } from 'next-i18next';
-
+import { ChatHeader } from './ChatHeader';
+import { ChatInput } from './ChatInput';
+import { ChatLoader } from './ChatLoader';
+import { MemoizedChatMessage } from './MemoizedChatMessage';
+import { InteractionModal } from '@/components/Chat/ChatInteractionMessage';
+import HomeContext from '@/pages/api/home/home.context';
+import { ChatBody, Conversation, Message } from '@/types/chat';
+import {
+  WebSocketInbound,
+  validateWebSocketMessage,
+  validateWebSocketMessageWithConversationId,
+  validateConversationId,
+  isSystemResponseMessage,
+  isSystemIntermediateMessage,
+  isSystemInteractionMessage,
+  isErrorMessage,
+  isSystemResponseInProgress,
+  isSystemResponseComplete,
+  isOAuthConsentMessage,
+  extractOAuthUrl,
+  shouldAppendResponseContent,
+} from '@/types/websocket';
 import { getEndpoint } from '@/utils/app/api';
 import { webSocketMessageTypes } from '@/utils/app/const';
 import {
@@ -15,21 +33,114 @@ import {
 import {
   fetchLastMessage,
   processIntermediateMessage,
+  updateConversationTitle,
 } from '@/utils/app/helper';
+import {
+  shouldAppendResponse,
+  appendAssistantText,
+  mergeIntermediateSteps,
+  applyMessageUpdate,
+  createAssistantMessage,
+  updateAssistantMessage,
+  shouldRenderAssistantMessage,
+} from '@/utils/chatTransform';
 import { throttle } from '@/utils/data/throttle';
-
-import { ChatBody, Conversation, Message } from '@/types/chat';
-
-import HomeContext from '@/pages/api/home/home.context';
-
-import { InteractionModal } from '@/components/Chat/ChatInteractionMessage';
-
-import { ChatHeader } from './ChatHeader';
-import { ChatInput } from './ChatInput';
-import { ChatLoader } from './ChatLoader';
-import { MemoizedChatMessage } from './MemoizedChatMessage';
-
+import { useTranslation } from 'next-i18next';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
+
+
+
+// Streaming utilities for handling SSE and NDJSON safely
+function normalizeNewlines(s: string): string {
+  // turn CRLF into LF so splitting is predictable
+  return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function extractSsePayloads(buffer: string): {
+  frames: string[];
+  rest: string;
+} {
+  buffer = normalizeNewlines(buffer);
+
+  // Split on blank line (event delimiter)
+  const parts = buffer.split(/\n\n/);
+  const rest = parts.pop() ?? '';
+
+  const frames: string[] = [];
+
+  for (const block of parts) {
+    // Keep only lines that start with "data:" possibly followed by a space
+    const dataLines = block
+      .split('\n')
+      .filter(line => /^data:\s*/.test(line))
+      .map(line => line.replace(/^data:\s*/, '').trim())
+      .filter(line => line.length > 0);
+
+    if (dataLines.length === 0) continue;
+
+    // Some servers send multi-line JSON; join them
+    const payload = dataLines.join('\n');
+
+    // Ignore sentinel frames
+    if (payload === '[DONE]' || payload === 'DONE') continue;
+
+    frames.push(payload);
+  }
+
+  return { frames, rest };
+}
+
+function splitNdjson(buffer: string): { lines: string[]; rest: string } {
+  buffer = normalizeNewlines(buffer);
+  const parts = buffer.split('\n');
+  const rest = parts.pop() ?? '';
+  // strip empty/whitespace lines
+  const lines = parts.map(l => l.trim()).filter(Boolean);
+  return { lines, rest };
+}
+
+function tryParseJson<T = any>(s: string): T | null {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
+function parsePossiblyConcatenatedJson(payload: string): any[] {
+  // Fast path
+  const single = tryParseJson(payload);
+  if (single !== null) return [single];
+
+  // Slow path: try to split concatenated top-level objects
+  const objs: any[] = [];
+  let depth = 0,
+    start = -1;
+  for (let i = 0; i < payload.length; i++) {
+    const ch = payload[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const slice = payload.slice(start, i + 1);
+        const parsed = tryParseJson(slice);
+        if (parsed !== null) objs.push(parsed);
+        start = -1;
+      }
+    }
+  }
+  return objs;
+}
+
+// Debug helper for streaming parse issues (commented out for production)
+// const debugParse = (label: string, payload: string) => {
+//   const preview = payload.length > 200 ? payload.slice(0, 200) + '…' : payload;
+//   console.debug(`[stream][${label}] payload preview:`, preview);
+// };
 
 export const Chat = () => {
   const { t } = useTranslation('chat');
@@ -64,20 +175,21 @@ export const Chat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const controllerRef = useRef(new AbortController());
   const selectedConversationRef = useRef(selectedConversation);
+  const conversationsRef = useRef(conversations);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [interactionMessage, setInteractionMessage] = useState(null);
-  const webSocketRef = useRef(null);
+  const webSocketRef = useRef<WebSocket | null>(null);
   const webSocketConnectedRef = useRef(false);
   const webSocketModeRef = useRef(
-    sessionStorage.getItem('webSocketMode') === 'false' ? false : webSocketMode,
+    sessionStorage.getItem('webSocketMode') === 'false' ? false : webSocketMode
   );
-  let websocketLoadingToastId = null;
+  let websocketLoadingToastId: string | null = null;
   const lastScrollTop = useRef(0); // Store last known scroll position
 
   // Add these variables near the top of your component
   const isUserInitiatedScroll = useRef(false);
-  const scrollTimeout = useRef(null);
+  const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const openModal = (data: any = {}) => {
     setInteractionMessage(data);
@@ -110,16 +222,17 @@ export const Chat = () => {
       },
       timestamp: new Date().toISOString(),
     };
-    console.log(
-      'sending user response for interaction message via websocket',
-      wsMessage,
-    );
     webSocketRef?.current?.send(JSON.stringify(wsMessage));
   };
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
+
+  // Keep conversations ref up to date to avoid stale closure
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   useEffect(() => {
     if (webSocketModeRef?.current && !webSocketConnectedRef.current) {
@@ -128,7 +241,7 @@ export const Chat = () => {
 
     // todo cancel ongoing connection attempts
     else {
-      toast.dismiss(websocketLoadingToastId);
+      if (websocketLoadingToastId) toast.dismiss(websocketLoadingToastId);
     }
 
     return () => {
@@ -148,7 +261,7 @@ export const Chat = () => {
       return false;
     }
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       // Universal cookie handling for both cross-origin and same-origin connections
       const getCookie = (name: string) => {
         const value = `; ${document.cookie}`;
@@ -172,22 +285,14 @@ export const Chat = () => {
       if (sessionCookie) {
         const separator = wsUrl.includes('?') ? '&' : '?';
         wsUrl += `${separator}session=${encodeURIComponent(sessionCookie)}`;
-
-        console.log(
-          `WebSocket: ${
-            isCrossOrigin ? 'Cross-origin' : 'Same-origin'
-          } connection with session:`,
-          sessionCookie.substring(0, 10) + '...',
-        );
       } else {
-        console.log('WebSocket: No session cookie found');
       }
 
       const ws = new WebSocket(wsUrl);
 
       websocketLoadingToastId = toast.loading(
         'WebSocket is not connected, trying to connect...',
-        { id: 'websocketLoadingToastId' },
+        { id: 'websocketLoadingToastId' }
       );
 
       ws.onopen = () => {
@@ -196,9 +301,9 @@ export const Chat = () => {
             (sessionStorage.getItem('webSocketURL') || webSocketURL),
           {
             id: 'websocketSuccessToastId',
-          },
+          }
         );
-        toast.dismiss(websocketLoadingToastId);
+        if (websocketLoadingToastId) toast.dismiss(websocketLoadingToastId);
 
         // using ref due to usecallback for handlesend which will be recreated during next render when dependency array changes
         // so values inside of are still one and be updated after next render
@@ -209,7 +314,7 @@ export const Chat = () => {
         resolve(true); // Resolve true only when connected
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         const message = JSON.parse(event.data);
         handleWebSocketMessage(message);
       };
@@ -221,19 +326,18 @@ export const Chat = () => {
           // Retry and capture the result
           if (webSocketModeRef?.current) {
             // Wait for retry delay
-            await new Promise((res) => setTimeout(res, retryDelay));
-            console.log(`Retrying connection... Attempt ${retryCount}`);
+            await new Promise(res => setTimeout(res, retryDelay));
+
             const success = await connectWebSocket(retryCount);
             resolve(success);
           }
         } else {
           // Only resolve(false) after all retries fail
-          console.log('WebSocket connection failed after retries.');
           homeDispatch({ field: 'webSocketConnected', value: false });
           webSocketConnectedRef.current = false;
           homeDispatch({ field: 'loading', value: false });
           homeDispatch({ field: 'messageIsStreaming', value: false });
-          toast.dismiss(websocketLoadingToastId);
+          if (websocketLoadingToastId) toast.dismiss(websocketLoadingToastId);
           toast.error('WebSocket connection failed.', {
             id: 'websocketErrorToastId',
           });
@@ -241,8 +345,7 @@ export const Chat = () => {
         }
       };
 
-      ws.onerror = (error) => {
-        console.log('WebSocket connection error');
+      ws.onerror = error => {
         homeDispatch({ field: 'webSocketConnected', value: false });
         webSocketConnectedRef.current = false;
         homeDispatch({ field: 'loading', value: false });
@@ -255,31 +358,213 @@ export const Chat = () => {
   // Re-attach the WebSocket handler when intermediateStepOverride changes because we need updated value from settings
   useEffect(() => {
     if (webSocketRef.current) {
-      webSocketRef.current.onmessage = (event) => {
+      webSocketRef.current.onmessage = event => {
         const message = JSON.parse(event.data);
         handleWebSocketMessage(message);
       };
     }
   }, [intermediateStepOverride]);
 
+  /**
+   * Handles OAuth consent flow by opening popup window
+   */
+  const handleOAuthConsent = (message: WebSocketInbound) => {
+    if (!isSystemInteractionMessage(message)) return false;
+
+    if (message.content?.input_type === 'oauth_consent') {
+      const oauthUrl = extractOAuthUrl(message);
+      if (oauthUrl) {
+        const popup = window.open(
+          oauthUrl,
+          'oauth-popup',
+          'width=600,height=700,scrollbars=yes,resizable=yes'
+        );
+        const handleOAuthComplete = (event: MessageEvent) => {
+          if (popup && !popup.closed) popup.close();
+          window.removeEventListener('message', handleOAuthComplete);
+        };
+        window.addEventListener('message', handleOAuthComplete);
+      }
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * Updates refs immediately before React dispatch to prevent stale reads
+   */
+  const updateRefsAndDispatch = (
+    updatedConversations: Conversation[],
+    updatedConversation: Conversation,
+    currentSelectedConversation: Conversation | null | undefined
+  ) => {
+    // Write-through to refs before dispatch to avoid stale reads on next WS tick
+    conversationsRef.current = updatedConversations;
+    if (currentSelectedConversation?.id === updatedConversation.id) {
+      selectedConversationRef.current = updatedConversation;
+    }
+
+    // Dispatch and persist
+    homeDispatch({ field: 'conversations', value: updatedConversations });
+    saveConversations(updatedConversations);
+
+    if (currentSelectedConversation?.id === updatedConversation.id) {
+      homeDispatch({
+        field: 'selectedConversation',
+        value: updatedConversation,
+      });
+      saveConversation(updatedConversation);
+    }
+  };
+
+  /**
+   * Processes system response messages for content updates
+   * Only appends content for in_progress status with non-empty text
+   */
+  const processSystemResponseMessage = (
+    message: WebSocketInbound,
+    messages: Message[]
+  ): Message[] => {
+    if (!shouldAppendResponse(message)) {
+      return messages;
+    }
+
+    const incomingText = isSystemResponseMessage(message)
+      ? message.content?.text?.trim() || ''
+      : '';
+    const lastMessage = messages.at(-1);
+    const isLastAssistant = lastMessage?.role === 'assistant';
+
+    if (isLastAssistant) {
+      // Append to existing assistant message using pure helper
+      const combinedContent = appendAssistantText(
+        lastMessage.content || '',
+        incomingText
+      );
+      return messages.map((m, idx) =>
+        idx === messages.length - 1
+          ? updateAssistantMessage(m, combinedContent)
+          : m
+      );
+    } else {
+      // Create new assistant message using pure helper
+      return [
+        ...messages,
+        createAssistantMessage(message.id, message.parent_id, incomingText),
+      ];
+    }
+  };
+
+  /**
+   * Processes intermediate step messages without modifying content
+   */
+  const processIntermediateStepMessage = (
+    message: WebSocketInbound,
+    messages: Message[]
+  ): Message[] => {
+    if (!isSystemIntermediateMessage(message)) return messages;
+
+    const lastMessage = messages.at(-1);
+    const isLastAssistant = lastMessage?.role === 'assistant';
+
+    if (!isLastAssistant) {
+      // Create new assistant message with empty content for intermediate steps
+      const stepWithIndex = { ...message, index: 0 };
+      return [
+        ...messages,
+        createAssistantMessage(message.id, message.parent_id, '', [
+          stepWithIndex,
+        ]),
+      ];
+    } else {
+      // Update intermediate steps on existing assistant message using pure helper
+      const lastIdx = messages.length - 1;
+      const lastSteps = messages[lastIdx]?.intermediateSteps || [];
+      const mergedSteps = mergeIntermediateSteps(
+        lastSteps,
+        message,
+        sessionStorage.getItem('intermediateStepOverride') === 'false'
+          ? false
+          : Boolean(intermediateStepOverride)
+      );
+
+      return messages.map((m, idx) =>
+        idx === lastIdx ? updateAssistantMessage(m, m.content, mergedSteps) : m
+      );
+    }
+  };
+
+  /**
+   * Processes error messages by attaching them to assistant messages
+   */
+  const processErrorMessage = (
+    message: WebSocketInbound,
+    messages: Message[]
+  ): Message[] => {
+    if (!isErrorMessage(message)) return messages;
+
+    const lastMessage = messages.at(-1);
+    const isLastAssistant = lastMessage?.role === 'assistant';
+
+    if (isLastAssistant) {
+      // Attach error to existing assistant message
+      return messages.map((m, idx) =>
+        idx === messages.length - 1
+          ? {
+              ...m,
+              errorMessages: [...(m.errorMessages || []), message],
+              timestamp: Date.now(),
+            }
+          : m
+      );
+    } else {
+      // Create new assistant message for error using pure helper
+      return [
+        ...messages,
+        createAssistantMessage(
+          message.id,
+          message.parent_id,
+          '',
+          [],
+          [],
+          [message]
+        ),
+      ];
+    }
+  };
+
+  /**
+   * Main WebSocket message handler
+   * Processes different message types and updates conversation state
+   */
   const handleWebSocketMessage = (message: any) => {
-    // console.log('Received message via websocket', message);
+    // Validate message structure AND conversation ID with detailed error reporting
+    try {
+      validateWebSocketMessageWithConversationId(message);
+    } catch (error: any) {
+      console.error('WebSocket message validation failed:', error.message);
+      toast.error(`WebSocket Error: ${error.message}`);
 
-    // todo ingore messages that are coming after stop conversation
-    // idea - add a field in stored messsage that indicates if its been cancelled
+      // Log additional debugging info
+      console.error('Raw message data:', message);
+      console.error(
+        'Available conversations:',
+        conversationsRef.current?.map(c => ({ id: c.id, name: c.name }))
+      );
 
-    // stop loading after receiving a message
+      return; // Don't process invalid messages
+    }
+
+    // End loading indicators as messages arrive
     homeDispatch({ field: 'loading', value: false });
-    if (message?.status === 'complete') {
-      // stop streaming status after receiving a message with status completed -> END
-      // to show the message on UI and scroll to the bottom after 500ms delay
+    if (isSystemResponseComplete(message)) {
       setTimeout(() => {
         homeDispatch({ field: 'messageIsStreaming', value: false });
       }, 200);
     }
 
-    // handling human in the loop messages
-    if (message?.type === webSocketMessageTypes.systemInteractionMessage) {
+    // Handle human-in-the-loop interactions using type guard
+    if (isSystemInteractionMessage(message)) {
       // Check for OAuth consent message and automatically open OAuth URL directly
       if (message?.content?.input_type === 'oauth_consent') {
         // Expect the OAuth URL to be directly in the message content
@@ -288,182 +573,80 @@ export const Chat = () => {
           message?.content?.redirect_url ||
           message?.content?.text;
         if (oauthUrl) {
-          // Open the OAuth URL directly in a popup window
-          const popup = window.open(
-            oauthUrl,
-            'oauth-popup',
-            'width=600,height=700,scrollbars=yes,resizable=yes',
-          );
-
-          // Optional: Set up message listener for OAuth completion
-          const handleOAuthComplete = (event: MessageEvent) => {
-            // You can handle OAuth completion messages here if needed
-            console.log('OAuth flow completed:', event.data);
-            if (popup && !popup.closed) {
-              popup.close();
-            }
-            window.removeEventListener('message', handleOAuthComplete);
-          };
-          window.addEventListener('message', handleOAuthComplete);
+          // Open the OAuth URL directly in a new tab
+          window.open(oauthUrl, '_blank');
         } else {
           console.error(
             'OAuth consent message received but no URL found in content:',
-            message?.content,
+            message?.content
           );
           toast.error('OAuth URL not found in message content');
         }
         return; // Don't process further or show modal
       }
-
       openModal(message);
-    }
-
-    if (
-      sessionStorage.getItem('enableIntermediateSteps') === 'false' &&
-      message?.type === webSocketMessageTypes.systemIntermediateMessage
-    ) {
-      console.log('ignoring intermediate steps');
       return;
     }
 
-    // handle error messages
-    if (message?.type === 'error') {
-      message.content.text =
-        'Something went wrong. Please try again. \n\n' +
-        `<details id=${message?.id}><summary></summary>${JSON.stringify(
-          message?.content,
-        )}</details>`;
-      // to show the message on UI and scroll to the bottom after 500ms delay
-      setTimeout(() => {
-        homeDispatch({ field: 'messageIsStreaming', value: false });
-      }, 200);
+    // Respect intermediate-steps toggle
+    if (
+      sessionStorage.getItem('enableIntermediateSteps') === 'false' &&
+      isSystemIntermediateMessage(message)
+    ) {
+      return;
     }
 
-    // updating conversation with new message
-    let updatedMessages;
-    let selectedConversation = window.sessionStorage.getItem(
-      'selectedConversation',
+    // Skip creating/updating assistant text for system_response:complete using type guard
+    if (isSystemResponseComplete(message)) {
+      return;
+    }
+
+    // Find target conversation with enhanced error reporting
+    const currentConversations = conversationsRef.current;
+    const currentSelectedConversation = selectedConversationRef.current;
+    const targetConversation = currentConversations.find(
+      c => c.id === message.conversation_id
     );
-    selectedConversation = JSON.parse(selectedConversation ?? '{}');
-    let conversations = JSON.parse(
-      window.sessionStorage.getItem('conversationsHistory') ?? '[]',
-    );
 
-    // logic
-    // if this is the first message (of the assistant response to user message), then add the message to the conversation as 'assistant' message
-    // else append the message to the exisiting assistant message (part of the stream appending)
-    // look through the conversation messages and find if a assistant message has id = parentId
-    const isLastMessageFromAssistant =
-      selectedConversation?.messages[selectedConversation?.messages?.length - 1]
-        .role === 'assistant';
-    if (isLastMessageFromAssistant) {
-      // console.log('found assistant message, appending to it')
-      // update the assistant message inside selectedConversation
-      updatedMessages = selectedConversation?.messages?.map((msg, idx) => {
-        if (
-          msg.role === 'assistant' &&
-          idx === selectedConversation?.messages?.length - 1
-        ) {
-          // do this only for response token
-          let updatedContent = msg.content || '';
-          if (message?.type === webSocketMessageTypes.systemResponseMessage) {
-            updatedContent = updatedContent + (message?.content?.text || '');
-          }
-
-          // find index for new message
-          // it can be the length of the intermediate messages last one
-          let index = msg?.intermediateSteps?.length || 0;
-          message = { ...message, index };
-
-          // process IntermediateSteps
-          let processedIntermediateSteps =
-            message?.type === webSocketMessageTypes.systemIntermediateMessage
-              ? processIntermediateMessage(
-                  msg.intermediateSteps || [],
-                  message,
-                  sessionStorage.getItem('intermediateStepOverride') === 'false'
-                    ? false
-                    : intermediateStepOverride,
-                )
-              : msg.intermediateSteps || [];
-
-          if (
-            message?.type === webSocketMessageTypes.systemInteractionMessage
-          ) {
-            msg.humanInteractionMessages = msg.humanInteractionMessages || [];
-            msg.humanInteractionMessages.push(message);
-          }
-          if (message?.type === 'error') {
-            msg.errorMessages = msg.errorMessages || [];
-            msg.errorMessages.push(message);
-          }
-
-          // update the assistant message with new content and processed intermediate steps
-          return {
-            ...msg,
-            content: updatedContent,
-            intermediateSteps: processedIntermediateSteps,
-            humanInteractionMessages: msg.humanInteractionMessages || [],
-            errorMessages: msg.errorMessages || [],
-          };
-        }
-        return msg;
+    if (!targetConversation) {
+      const errorMsg = `WebSocket message received for unknown conversation ID: ${message.conversation_id}`;
+      console.error(errorMsg);
+      console.error('Message details:', {
+        type: message.type,
+        conversation_id: message.conversation_id,
+        id: message.id,
       });
-    } else {
-      // console.log('didnt find assistant message, adding new one (first chunk of response)')
-      // add the new message to the conversation as 'assistant' message
-      updatedMessages = [
-        ...(selectedConversation?.messages || []),
-        {
-          role: 'assistant',
-          id: message?.id,
-          parentId: message?.parent_id,
-          content: message?.content?.text || '',
-          intermediateSteps:
-            message?.type === webSocketMessageTypes.systemIntermediateMessage
-              ? [{ ...message, index: 0 }]
-              : [],
-          humanInteractionMessages:
-            message?.type === webSocketMessageTypes.systemInteractionMessage
-              ? [message]
-              : [],
-          errorMessages: message?.type === 'error' ? [message] : [],
-        },
-      ];
+      console.error(
+        'Available conversations:',
+        currentConversations?.map(c => ({ id: c.id, name: c.name }))
+      );
+
+      return;
     }
 
-    // update the conversation
-    let updatedConversation = {
-      ...selectedConversation,
-      messages: updatedMessages,
-    };
-    homeDispatch({
-      field: 'selectedConversation',
-      value: updatedConversation,
-    });
+    // Process message based on type using pure helpers
+    let updatedMessages = targetConversation.messages;
+    updatedMessages = processSystemResponseMessage(message, updatedMessages);
+    updatedMessages = processIntermediateStepMessage(message, updatedMessages);
+    updatedMessages = processErrorMessage(message, updatedMessages);
 
-    // save the conversation to session storage
-    saveConversation(updatedConversation);
+    // Update conversation with new messages and title using pure helper
+    const updatedConversation = applyMessageUpdate(
+      targetConversation,
+      updatedMessages
+    );
 
-    // update the conversations
-    const updatedConversations =
-      conversations?.map((conversation) => {
-        if (conversation.id === updatedConversation?.id) {
-          return updatedConversation;
-        }
-        return conversation;
-      }) || [];
+    // Update conversations array
+    const updatedConversations = currentConversations.map(c =>
+      c.id === updatedConversation.id ? updatedConversation : c
+    );
 
-    if (updatedConversations.length === 0) {
-      updatedConversations.push(updatedConversation);
-    }
-    homeDispatch({
-      field: 'conversations',
-      value: updatedConversations,
-    });
-
-    // save the conversations to session storage
-    saveConversations(updatedConversations);
+    // Update state and persistence
+    updateRefsAndDispatch(
+      updatedConversations,
+      updatedConversation,
+      currentSelectedConversation
+    );
   };
 
   const handleSend = useCallback(
@@ -506,14 +689,10 @@ export const Chat = () => {
           if (!webSocketConnectedRef?.current) {
             const connected = await connectWebSocket();
             if (!connected) {
-              console.log('WebSocket connection failed.');
               homeDispatch({ field: 'loading', value: false });
               homeDispatch({ field: 'messageIsStreaming', value: false });
               return;
             } else {
-              console.log(
-                'WebSocket connected successfully!, Resend the query',
-              );
               handleSend(message, 1);
               return;
             }
@@ -521,17 +700,15 @@ export const Chat = () => {
           toast.dismiss();
 
           saveConversation(updatedConversation);
-          const updatedConversations: Conversation[] = conversations.map(
-            (conversation) => {
+          // Use conversationsRef.current to avoid stale closure that causes conversation wiping
+          const updatedConversations: Conversation[] =
+            conversationsRef.current.map(conversation => {
               if (conversation.id === selectedConversation.id) {
                 return updatedConversation;
               }
               return conversation;
-            },
-          );
-          if (updatedConversations.length === 0) {
-            updatedConversations.push(updatedConversation);
-          }
+            });
+          // Removed fallback block that was wiping conversations
           homeDispatch({
             field: 'conversations',
             value: updatedConversations,
@@ -549,15 +726,20 @@ export const Chat = () => {
                       type: 'text',
                       text: message?.content?.trim() || '',
                     },
-                    ...(message?.content?.attachments?.length > 0
-                      ? message?.content?.attachments?.map((attachment) => ({
-                          type: 'image',
-                          image_url: attachment?.content,
-                        }))
+                    ...(typeof message?.content === 'object' &&
+                    message?.content &&
+                    'attachments' in message.content &&
+                    (message.content as any).attachments?.length > 0
+                      ? (message.content as any).attachments?.map(
+                          (attachment: any) => ({
+                            type: 'image',
+                            image_url: attachment?.content,
+                          })
+                        )
                       : []),
                   ],
                 };
-              },
+              }
             );
           }
           // else set only the user last message
@@ -566,7 +748,7 @@ export const Chat = () => {
               updatedConversation?.messages[
                 updatedConversation?.messages?.length - 1
               ],
-            ].map((message) => {
+            ].map(message => {
               return {
                 role: message.role,
                 content: [
@@ -596,10 +778,13 @@ export const Chat = () => {
         }
 
         // cleaning up messages to fit the request payload
-        const messagesCleaned = updatedConversation.messages.map((message) => {
+        const messagesCleaned = updatedConversation.messages.map(message => {
           return {
             role: message.role,
-            content: message.content.trim(),
+            content: (typeof message.content === 'string'
+              ? message.content
+              : ''
+            ).trim(),
           };
         });
 
@@ -611,7 +796,7 @@ export const Chat = () => {
             sessionStorage.getItem('chatCompletionURL') || chatCompletionURL,
           additionalProps: {
             enableIntermediateSteps: sessionStorage.getItem(
-              'enableIntermediateSteps',
+              'enableIntermediateSteps'
             )
               ? sessionStorage.getItem('enableIntermediateSteps') === 'true'
               : enableIntermediateSteps,
@@ -626,7 +811,7 @@ export const Chat = () => {
 
         let response;
         try {
-          response = await fetch(`${window.location.origin}\\${endpoint}`, {
+          response = await fetch(`${window.location.origin}/${endpoint}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -670,10 +855,73 @@ export const Chat = () => {
             let text = '';
             let counter = 1;
             let partialIntermediateStep = ''; // Add this to store partial chunks
+
+            // Initialize streaming buffers
+            const currentURL =
+              sessionStorage.getItem('chatCompletionURL') ||
+              chatCompletionURL ||
+              '';
+            const isGenerateStream = currentURL.includes('generate');
+            let sseBuffer = '';
+            let ndjsonBuffer = '';
+
             while (!done) {
               const { value, done: doneReading } = await reader.read();
               done = doneReading;
-              let chunkValue = decoder.decode(value);
+              if (!value) continue;
+
+              let chunkValue = '';
+
+              // Handle generate/stream endpoints safely
+              if (isGenerateStream) {
+                const chunkText = decoder.decode(value, { stream: true });
+
+                // 1) Try SSE first
+                sseBuffer += chunkText;
+                let sseFrames: string[] = [];
+                ({ frames: sseFrames, rest: sseBuffer } =
+                  extractSsePayloads(sseBuffer));
+
+                let extractedText = '';
+
+                if (sseFrames.length > 0) {
+                  for (const frame of sseFrames) {
+                    const objs = parsePossiblyConcatenatedJson(frame);
+                    for (const obj of objs) {
+                      if (obj && typeof obj.value === 'string') {
+                        extractedText += obj.value;
+                      } else if (typeof obj === 'string') {
+                        extractedText += obj; // some servers may send string payloads
+                      }
+                    }
+                  }
+                } else {
+                  // 2) Fall back to NDJSON if it wasn't SSE
+                  ndjsonBuffer += chunkText;
+                  let lines: string[] = [];
+                  ({ lines, rest: ndjsonBuffer } = splitNdjson(ndjsonBuffer));
+                  for (const line of lines) {
+                    const obj = tryParseJson<any>(line);
+                    if (obj && typeof obj.value === 'string') {
+                      extractedText += obj.value;
+                    } else if (typeof obj === 'string') {
+                      extractedText += obj;
+                    }
+                  }
+                }
+
+                // 3) If neither SSE nor NDJSON detected, treat as plain text
+                chunkValue = extractedText || chunkText;
+              } else {
+                // Non-generate streaming path (existing logic)
+                chunkValue = decoder.decode(value, { stream: true });
+              }
+
+              // Ensure chunkValue is always a string
+              if (typeof chunkValue !== 'string') {
+                chunkValue = String(chunkValue ?? '');
+              }
+
               counter++;
 
               // First, handle any partial chunk from previous iteration
@@ -686,7 +934,7 @@ export const Chat = () => {
               const openingTagIndex =
                 chunkValue.lastIndexOf('<intermediatestep>');
               const closingTagIndex = chunkValue.lastIndexOf(
-                '</intermediatestep>',
+                '</intermediatestep>'
               );
 
               // If we have an opening tag without a closing tag (or closing tag comes before opening)
@@ -698,18 +946,18 @@ export const Chat = () => {
               }
 
               // Process complete intermediate steps
-              let rawIntermediateSteps = [];
-              let messages =
+              let rawIntermediateSteps: any[] = [];
+              let stepMatches =
                 chunkValue.match(
-                  /<intermediatestep>(.*?)<\/intermediatestep>/gs,
+                  /<intermediatestep>([\s\S]*?)<\/intermediatestep>/g
                 ) || [];
-              for (const message of messages) {
+              for (const stepMatch of stepMatches) {
                 try {
-                  const jsonString = message
+                  const jsonString = stepMatch
                     .replace('<intermediatestep>', '')
                     .replace('</intermediatestep>', '')
                     .trim();
-                  let rawIntermediateMessage = JSON.parse(jsonString);
+                  let rawIntermediateMessage = tryParseJson<any>(jsonString);
                   // handle intermediate data
                   if (rawIntermediateMessage?.type === 'system_intermediate') {
                     rawIntermediateSteps.push(rawIntermediateMessage);
@@ -720,10 +968,10 @@ export const Chat = () => {
               }
 
               // if the received chunk contains rawIntermediateSteps then remove them from the chunkValue
-              if (messages.length > 0) {
+              if (stepMatches.length > 0) {
                 chunkValue = chunkValue.replace(
                   /<intermediatestep>[\s\S]*?<\/intermediatestep>/g,
-                  '',
+                  ''
                 );
               }
 
@@ -734,15 +982,15 @@ export const Chat = () => {
                 isFirst = false;
 
                 // loop through rawIntermediateSteps and add them to the processedIntermediateSteps
-                let processedIntermediateSteps = [];
-                rawIntermediateSteps.forEach((step) => {
+                let processedIntermediateSteps: any[] = [];
+                rawIntermediateSteps.forEach(step => {
                   processedIntermediateSteps = processIntermediateMessage(
                     processedIntermediateSteps,
                     step,
                     sessionStorage.getItem('intermediateStepOverride') ===
                       'false'
                       ? false
-                      : intermediateStepOverride,
+                      : intermediateStepOverride
                   );
                 });
 
@@ -771,17 +1019,19 @@ export const Chat = () => {
                     if (index === updatedConversation.messages.length - 1) {
                       // process intermediate steps
                       // need to loop through raw rawIntermediateSteps and add them to the updatedIntermediateSteps
-                      let updatedIntermediateSteps = [
-                        ...message?.intermediateSteps,
-                      ];
-                      rawIntermediateSteps.forEach((step) => {
+                      let updatedIntermediateSteps = Array.isArray(
+                        message?.intermediateSteps
+                      )
+                        ? [...message.intermediateSteps]
+                        : [];
+                      rawIntermediateSteps.forEach(step => {
                         updatedIntermediateSteps = processIntermediateMessage(
                           updatedIntermediateSteps,
                           step,
                           sessionStorage.getItem('intermediateStepOverride') ===
                             'false'
                             ? false
-                            : intermediateStepOverride,
+                            : intermediateStepOverride
                         );
                       });
 
@@ -808,12 +1058,12 @@ export const Chat = () => {
 
             saveConversation(updatedConversation);
             const updatedConversations: Conversation[] = conversations.map(
-              (conversation) => {
+              conversation => {
                 if (conversation.id === selectedConversation.id) {
                   return updatedConversation;
                 }
                 return conversation;
-              },
+              }
             );
             if (updatedConversations.length === 0) {
               updatedConversations.push(updatedConversation);
@@ -840,16 +1090,16 @@ export const Chat = () => {
             };
             homeDispatch({
               field: 'selectedConversation',
-              value: updateConversation,
+              value: updatedConversation,
             });
             saveConversation(updatedConversation);
             const updatedConversations: Conversation[] = conversations.map(
-              (conversation) => {
+              conversation => {
                 if (conversation.id === selectedConversation.id) {
                   return updatedConversation;
                 }
                 return conversation;
-              },
+              }
             );
             if (updatedConversations.length === 0) {
               updatedConversations.push(updatedConversation);
@@ -866,10 +1116,9 @@ export const Chat = () => {
           saveConversation(updatedConversation);
           homeDispatch({ field: 'loading', value: false });
           homeDispatch({ field: 'messageIsStreaming', value: false });
-          if (error === 'aborted' || error?.name === 'AbortError') {
+          if (error === 'aborted' || (error as any)?.name === 'AbortError') {
             return;
           } else {
-            console.log('error during chat completion - ', error);
             return;
           }
         }
@@ -886,8 +1135,14 @@ export const Chat = () => {
       expandIntermediateSteps,
       intermediateStepOverride,
       enableIntermediateSteps,
-    ],
+    ]
   );
+
+  // Create stable onEdit callback to prevent unnecessary re-renders
+  const handleEditMessage = useCallback((editedMessage: Message, deleteCount?: number) => {
+    setCurrentMessage(editedMessage);
+    handleSend(editedMessage, deleteCount || 0);
+  }, [handleSend]);
 
   // Add a new effect to handle streaming state changes
   useEffect(() => {
@@ -914,7 +1169,7 @@ export const Chat = () => {
       }
       scrollTimeout.current = setTimeout(() => {
         isUserInitiatedScroll.current = false;
-      }, 200);
+      }, 200) as NodeJS.Timeout;
     };
 
     // Add event listeners for user interactions
@@ -980,9 +1235,10 @@ export const Chat = () => {
   useEffect(() => {
     throttledScrollDown();
     selectedConversation &&
-      setCurrentMessage(
-        selectedConversation.messages[selectedConversation.messages.length - 2],
-      );
+      setCurrentMessage(() => {
+        const len = selectedConversation?.messages.length ?? 0;
+        return len >= 2 ? selectedConversation.messages[len - 2] : undefined;
+      });
   }, [selectedConversation, throttledScrollDown]);
 
   useEffect(() => {
@@ -1005,7 +1261,7 @@ export const Chat = () => {
       {
         root: null,
         threshold: 0.5,
-      },
+      }
     );
 
     const messagesEndElement = messagesEndRef.current;
@@ -1028,20 +1284,20 @@ export const Chat = () => {
           onScroll={handleScroll}
         >
           <ChatHeader webSocketModeRef={webSocketModeRef} />
-          {selectedConversation?.messages.map((message, index) => (
-            <MemoizedChatMessage
-              key={index}
-              message={message}
-              messageIndex={index}
-              onEdit={(editedMessage) => {
-                setCurrentMessage(editedMessage);
-                handleSend(
-                  editedMessage,
-                  selectedConversation?.messages.length - index,
-                );
-              }}
-            />
-          ))}
+          {selectedConversation?.messages.map((message, index) => {
+            if (!shouldRenderAssistantMessage(message)) {
+              return null; // Hide empty assistant messages
+            }
+
+            return (
+              <MemoizedChatMessage
+                key={message.id ?? index}
+                message={message}
+                messageIndex={index}
+                onEdit={handleEditMessage}
+              />
+            );
+          })}
           {loading && <ChatLoader statusUpdateText={`Thinking...`} />}
           <div
             className="h-[162px] bg-white dark:bg-[#343541]"
@@ -1050,7 +1306,7 @@ export const Chat = () => {
         </div>
         <ChatInput
           textareaRef={textareaRef}
-          onSend={(message) => {
+          onSend={message => {
             setCurrentMessage(message);
             handleSend(message, 0);
           }}
@@ -1060,7 +1316,7 @@ export const Chat = () => {
               handleSend(currentMessage, 0);
             } else {
               const lastUserMessage = fetchLastMessage({
-                messages: selectedConversation?.messages,
+                messages: selectedConversation?.messages || [],
                 role: 'user',
               });
               lastUserMessage && handleSend(lastUserMessage, 1);

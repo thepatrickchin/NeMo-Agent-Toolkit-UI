@@ -2,9 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export default function middleware(req: NextRequest) {
-  // Log the request
-  console.log('Request:', req);
-
   // Skip middleware for static files and auth routes
   if (
     req.nextUrl.pathname.startsWith('/_next/') ||
@@ -18,7 +15,7 @@ export default function middleware(req: NextRequest) {
   const response = NextResponse.next();
 
   // Check if session cookie exists
-  const sessionCookie = req.cookies.get('aiqtoolkit-session');
+  const sessionCookie = req.cookies.get('nemo-agent-toolkit-session');
 
   if (!sessionCookie) {
     // Generate a new session ID for visitors without one
@@ -27,7 +24,7 @@ export default function middleware(req: NextRequest) {
       .substr(2, 9)}`;
 
     // Set the session cookie
-    response.cookies.set('aiqtoolkit-session', sessionId, {
+    response.cookies.set('nemo-agent-toolkit-session', sessionId, {
       httpOnly: false,
       sameSite: 'lax',
       path: '/',
@@ -40,9 +37,6 @@ export default function middleware(req: NextRequest) {
       response.headers.set('x-session-id', sessionId);
     }
   } else {
-    // Print session cookie
-    console.log('Session cookie:', sessionCookie);
-
     // Add existing session ID to headers for API routes
     if (req.nextUrl.pathname.startsWith('/api/')) {
       response.headers.set('x-session-id', sessionCookie.value);
