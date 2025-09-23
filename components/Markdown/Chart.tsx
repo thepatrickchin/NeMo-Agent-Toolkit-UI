@@ -134,10 +134,10 @@ const Chart = (props: any) => {
 
       case 'PieChart':
         return (
-          <ResponsiveContainer width="100%" height={300} className={'p-2'}>
+          <ResponsiveContainer width="100%" height={600} className={'p-2'}>
             <PieChart id={`chart-PieChart-${Label}`}>
               <Tooltip />
-              <Legend />
+              <Legend align="right" layout="vertical" verticalAlign="middle" />
               <Pie
                 data={Data}
                 dataKey={ValueKey}
