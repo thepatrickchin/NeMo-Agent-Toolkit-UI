@@ -37,22 +37,21 @@ echo "✅ Successfully authenticated with AWS ECR"
 
 echo "🏗️  Building Docker image with dev overlay environment..."
 
-# Read environment variables from .env-dev-overlay and convert to build args
-BUILD_ARGS=""
+# Copy .env-dev-overlay as .env for the build context
 if [ -f ".env-dev-overlay" ]; then
-    while IFS= read -r line; do
-        # Skip empty lines and comments
-        if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
-            # Extract key and value
-            key=$(echo "$line" | cut -d'=' -f1)
-            value=$(echo "$line" | cut -d'=' -f2-)
-            BUILD_ARGS="$BUILD_ARGS --build-arg $key=\"$value\""
-        fi
-    done < .env-dev-overlay
+    cp .env-dev-overlay .env
+    echo "✅ Copied .env-dev-overlay to .env for build context"
+else
+    echo "❌ .env-dev-overlay file not found!"
+    exit 1
 fi
 
-# Build the Docker image with the environment variables
-eval "docker build $BUILD_ARGS -t $IMAGE_NAME:$VERSION ."
+# Build the Docker image
+docker build -t $IMAGE_NAME:$VERSION .
+
+# Clean up the temporary .env file
+rm -f .env
+echo "✅ Cleaned up temporary .env file"
 
 if [ $? -ne 0 ]; then
     echo "❌ Docker build failed. Please check your Dockerfile and try again."
