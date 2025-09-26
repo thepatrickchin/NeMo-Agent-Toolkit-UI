@@ -54,6 +54,7 @@ const Chart = (props: any) => {
   const data = props?.payload;
   const {
     Label = '',
+    SeriesLabel = '',
     ChartType = '',
     Data = [],
     XAxisKey = '',
@@ -113,7 +114,7 @@ const Chart = (props: any) => {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey={YAxisKey} fill={colors.fill} />
+              <Bar dataKey={YAxisKey} fill={colors.fill} name={SeriesLabel} />
             </BarChart>
           </ResponsiveContainer>
         );
@@ -127,7 +128,7 @@ const Chart = (props: any) => {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey={YAxisKey} stroke={colors.fill} />
+              <Line type="monotone" dataKey={YAxisKey} stroke={colors.fill} name={SeriesLabel} />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -164,6 +165,7 @@ const Chart = (props: any) => {
               <Legend />
               <Area
                 type="monotone"
+                name={SeriesLabel}
                 dataKey={YAxisKey}
                 stroke={colors.stroke}
                 fill={colors.fill}
@@ -200,7 +202,7 @@ const Chart = (props: any) => {
               <YAxis type="number" dataKey={YAxisKey} name={YAxisKey} />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} />
               <Legend />
-              <Scatter name="Sales vs Profit" data={Data} fill={colors.fill} />
+              <Scatter data={Data} fill={colors.fill} />
             </ScatterChart>
           </ResponsiveContainer>
         );
