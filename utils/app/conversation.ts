@@ -32,7 +32,7 @@ export const saveConversation = (conversation: Conversation) => {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       console.log('Storage quota exceeded, cannot save conversation.');
-      toast.error('Storage quota exceeded, cannot save conversation.');
+      // toast.error('Storage quota exceeded, cannot save conversation.');
     }
   }
 };
@@ -46,7 +46,7 @@ export const saveConversations = (conversations: Conversation[]) => {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       console.log('Storage quota exceeded, cannot save conversations.');
-      toast.error('Storage quota exceeded, cannot save conversation.');
+      // toast.error('Storage quota exceeded, cannot save conversation.');
     }
   }
 };
