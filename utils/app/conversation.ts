@@ -2,6 +2,8 @@ import toast from 'react-hot-toast';
 
 import { Conversation, Role } from '@/types/chat';
 
+const MAX_MESSAGES_PER_CONVERSATION = 20;
+
 export const updateConversation = (
   updatedConversation: Conversation,
   allConversations: Conversation[],
@@ -25,9 +27,15 @@ export const updateConversation = (
 
 export const saveConversation = (conversation: Conversation) => {
   try {
+    // Limit messages in the selected conversation to maximum 20, keeping the most recent ones
+    const trimmedConversation = {
+      ...conversation,
+      messages: conversation.messages.slice(-MAX_MESSAGES_PER_CONVERSATION)
+    };
+    
     sessionStorage.setItem(
       'selectedConversation',
-      JSON.stringify(conversation),
+      JSON.stringify(trimmedConversation),
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
@@ -45,7 +53,7 @@ export const saveConversations = (conversations: Conversation[]) => {
     // Limit messages in the conversation to maximum 20, keeping the most recent ones
     const conversationsWithLimitedMessages = latestConversation.map(conversation => ({
       ...conversation,
-      messages: conversation.messages.slice(-20)
+      messages: conversation.messages.slice(-MAX_MESSAGES_PER_CONVERSATION)
     }));
     
     sessionStorage.setItem(
