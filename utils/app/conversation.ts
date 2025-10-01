@@ -3,7 +3,6 @@ import toast from 'react-hot-toast';
 import { Conversation, Role } from '@/types/chat';
 
 const MAX_MESSAGES_PER_CONVERSATION = 20;
-
 export const updateConversation = (
   updatedConversation: Conversation,
   allConversations: Conversation[],
@@ -27,11 +26,17 @@ export const updateConversation = (
 
 export const saveConversation = (conversation: Conversation) => {
   try {
-    // Limit messages in the selected conversation to maximum 20, keeping the most recent ones
-    const trimmedConversation = {
-      ...conversation,
-      messages: conversation.messages.slice(-MAX_MESSAGES_PER_CONVERSATION)
-    };
+    // Only trim messages if they exceed the limit
+    const trimmedConversation = conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION
+      ? {
+          ...conversation,
+          messages: (() => {
+            const remove_count = Math.round(MAX_MESSAGES_PER_CONVERSATION / conversation.messages.length);
+            console.log(`Splicing conversation ${conversation.id}: ${conversation.messages.length} messages -> ${MAX_MESSAGES_PER_CONVERSATION} messages`);
+            return conversation.messages.splice(0, remove_count);
+          })()
+        }
+      : conversation;
     
     sessionStorage.setItem(
       'selectedConversation',
@@ -47,14 +52,24 @@ export const saveConversation = (conversation: Conversation) => {
 
 export const saveConversations = (conversations: Conversation[]) => {
   try {
-    // Keep only the latest conversation
-    const latestConversation = conversations.slice(-1);
+    // Only slice if there are multiple conversations, otherwise use the single conversation directly
+    const latestConversation = conversations.length > 1 ? conversations.slice(-1) : conversations;
     
-    // Limit messages in the conversation to maximum 20, keeping the most recent ones
-    const conversationsWithLimitedMessages = latestConversation.map(conversation => ({
-      ...conversation,
-      messages: conversation.messages.slice(-MAX_MESSAGES_PER_CONVERSATION)
-    }));
+    // Calculate the message limit per conversation
+    const remove_count = Math.round(MAX_MESSAGES_PER_CONVERSATION / conversations.length);
+    
+    // Only trim messages if they exceed the limit
+    const conversationsWithLimitedMessages = latestConversation.map(conversation => 
+      conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION
+        ? {
+            ...conversation,
+            messages: (() => {
+              console.log(`Splicing conversations ${conversation.id}: ${conversation.messages.length} messages -> ${remove_count} messages`);
+              return conversation.messages.splice(0, remove_count);
+            })()
+          }
+        : conversation
+    );
     
     sessionStorage.setItem(
       'conversationHistory',
