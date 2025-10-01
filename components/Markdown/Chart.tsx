@@ -160,6 +160,37 @@ const Chart = (props: any) => {
           </ResponsiveContainer>
         );
 
+      case 'SunburstChart':
+        const renderCustomizedLabel = ( { cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
+          // Only render labels for slices larger than 5%
+          const minPercentThreshold = 0.05;
+          if ((percent ?? 0) < minPercentThreshold) {
+            return null;
+          }
+
+          const RADIAN = Math.PI / 180;
+          const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+          const x = cx + radius * Math.cos(-(midAngle ?? 0) * RADIAN);
+          const y = cy + radius * Math.sin(-(midAngle ?? 0) * RADIAN);
+        
+          return (
+            <text x={x} y={y} fill="black" textAnchor="middle" dominantBaseline="central" fontSize="12">
+              {name}
+            </text>
+          );
+        };
+
+        return (
+          <ResponsiveContainer width="100%" height={500} className={'p-2'}>
+            <PieChart>
+              <Tooltip />
+              {/* <Legend align="right" layout="vertical" verticalAlign="middle" /> */}
+              <Pie data={Data.outer} dataKey={ValueKey} nameKey={NameKey} cx="50%" cy="50%" innerRadius={150} outerRadius={230} fill="#76b900" label={renderCustomizedLabel} labelLine={false}/>
+              <Pie data={Data.inner} dataKey={ValueKey} nameKey={NameKey} cx="50%" cy="50%" innerRadius={70} outerRadius={150} fill="#bbe969" label={renderCustomizedLabel} labelLine={false}/>
+            </PieChart>
+          </ResponsiveContainer>
+        );
+        
       case 'AreaChart':
         return (
           <ResponsiveContainer width="100%" height={400} className={'p-2'}>
