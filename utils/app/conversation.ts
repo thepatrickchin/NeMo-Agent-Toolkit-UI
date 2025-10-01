@@ -39,9 +39,18 @@ export const saveConversation = (conversation: Conversation) => {
 
 export const saveConversations = (conversations: Conversation[]) => {
   try {
+    // Keep only the latest conversation
+    const latestConversation = conversations.slice(-1);
+    
+    // Limit messages in the conversation to maximum 20, keeping the most recent ones
+    const conversationsWithLimitedMessages = latestConversation.map(conversation => ({
+      ...conversation,
+      messages: conversation.messages.slice(-20)
+    }));
+    
     sessionStorage.setItem(
       'conversationHistory',
-      JSON.stringify(conversations),
+      JSON.stringify(conversationsWithLimitedMessages),
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
