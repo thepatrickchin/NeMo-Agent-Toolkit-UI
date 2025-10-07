@@ -2,7 +2,32 @@ import toast from 'react-hot-toast';
 
 import { Conversation, Role } from '@/types/chat';
 
-const MAX_MESSAGES_PER_CONVERSATION = 20;
+const MAX_MESSAGES_PER_CONVERSATION = 24;
+
+/**
+ * Truncates messages in a conversation to avoid exceeding the limit.
+ * Keeps the most recent messages and tries to avoid cutting off at a user message.
+ */
+const truncateMessages = (messages: any[]): any[] => {
+  if (messages.length <= MAX_MESSAGES_PER_CONVERSATION) {
+    return messages;
+  }
+
+  // Calculate how many messages to remove from the beginning to keep MAX_MESSAGES_PER_CONVERSATION
+  let remove_count = Math.max(0, Math.round(MAX_MESSAGES_PER_CONVERSATION / 2));
+  
+  // Try to avoid cutting off at a user message
+  // If the message at the cut point is a user message, remove one more to keep the pair
+  if (remove_count < messages.length && messages[remove_count]?.role === "user") {
+    console.log("Removing one more message to keep the pair");
+    remove_count--;
+  }
+  
+  console.log(`Truncating messages: ${messages.length} -> ${messages.length - remove_count} (removing ${remove_count} old messages)`);
+  
+  // Return messages starting from remove_count (keeping the most recent ones)
+  return messages.slice(remove_count);
+};
 export const updateConversation = (
   updatedConversation: Conversation,
   allConversations: Conversation[],
@@ -26,17 +51,10 @@ export const updateConversation = (
 
 export const saveConversation = (conversation: Conversation) => {
   try {
-    // Only trim messages if they exceed the limit
-    const trimmedConversation = conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION
-      ? {
-          ...conversation,
-          messages: (() => {
-            const remove_count = Math.round(MAX_MESSAGES_PER_CONVERSATION / conversation.messages.length);
-            console.log(`Splicing conversation ${conversation.id}: ${conversation.messages.length} messages -> ${MAX_MESSAGES_PER_CONVERSATION} messages`);
-            return conversation.messages.splice(0, remove_count);
-          })()
-        }
-      : conversation;
+    const trimmedConversation = {
+      ...conversation,
+      messages: truncateMessages(conversation.messages)
+    };
     
     sessionStorage.setItem(
       'selectedConversation',
@@ -55,21 +73,11 @@ export const saveConversations = (conversations: Conversation[]) => {
     // Only slice if there are multiple conversations, otherwise use the single conversation directly
     const latestConversation = conversations.length > 1 ? conversations.slice(-1) : conversations;
     
-    // Calculate the message limit per conversation
-    const remove_count = Math.round(MAX_MESSAGES_PER_CONVERSATION / conversations.length);
-    
-    // Only trim messages if they exceed the limit
-    const conversationsWithLimitedMessages = latestConversation.map(conversation => 
-      conversation.messages.length > MAX_MESSAGES_PER_CONVERSATION
-        ? {
-            ...conversation,
-            messages: (() => {
-              console.log(`Splicing conversations ${conversation.id}: ${conversation.messages.length} messages -> ${remove_count} messages`);
-              return conversation.messages.splice(0, remove_count);
-            })()
-          }
-        : conversation
-    );
+    // Trim messages if they exceed the limit
+    const conversationsWithLimitedMessages = latestConversation.map(conversation => ({
+      ...conversation,
+      messages: truncateMessages(conversation.messages)
+    }));
     
     sessionStorage.setItem(
       'conversationHistory',

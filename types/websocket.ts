@@ -153,7 +153,8 @@ export function validateWebSocketMessage(message: any): message is WebSocketInbo
       'system_intermediate_message', 
       'system_interaction_message',
       'observability_trace_message',
-      'error'
+      'error',
+      'error_message'
     ].includes(message.type)
   );
 }
