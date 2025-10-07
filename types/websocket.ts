@@ -139,7 +139,8 @@ export function validateWebSocketMessage(message: any): message is WebSocketInbo
       'system_response_message',
       'system_intermediate_message', 
       'system_interaction_message',
-      'error'
+      'error',
+      'error_message'
     ].includes(message.type)
   );
 }
