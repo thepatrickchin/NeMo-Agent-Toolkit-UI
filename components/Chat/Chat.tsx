@@ -53,9 +53,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { SESSION_COOKIE_NAME } from '@/constants/constants';
 import { isValidConsentPromptURL } from '@/utils/security/oauth-validation';
-import { isValidWebSocketURL } from '@/utils/security/websocket-validation';
+import { validateWebSocketURL } from '@/utils/security/url-validation';
 
-export { isValidWebSocketURL };
+export { validateWebSocketURL };
 
 
 
@@ -162,7 +162,6 @@ export const Chat = () => {
       webSocketMode,
       webSocketURL,
       webSocketSchema,
-      serverURL,
       httpEndpoint,
       optionalGenerationParameters,
       expandIntermediateSteps,
@@ -239,8 +238,6 @@ export const Chat = () => {
     interactionMessage = {},
     userResponse = '',
   }: any) => {
-    // todo send user input to websocket server as user response to interaction message
-    // console.log("User response:", userResponse);
     const wsMessage = {
       type: webSocketMessageTypes.userInteractionMessage,
       id: uuidv4(), //new id for every new message
@@ -328,7 +325,7 @@ export const Chat = () => {
       let wsUrl: string = webSocketURL;
       
       // Validate WebSocket URL before connecting to prevent malicious connections
-      if (!isValidWebSocketURL(wsUrl)) {
+      if (!validateWebSocketURL(wsUrl)) {
         console.error('WebSocket URL validation failed, refusing to connect to potentially malicious server:', wsUrl);
         toast.error('WebSocket URL validation failed.');
         resolve(false);
@@ -1212,7 +1209,6 @@ export const Chat = () => {
       chatHistory,
       webSocketConnected,
       webSocketSchema,
-      serverURL,
       httpEndpoint,
       optionalGenerationParameters,
       expandIntermediateSteps,
