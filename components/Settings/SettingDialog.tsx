@@ -2,13 +2,14 @@ import { FC, useContext, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'next-i18next';
 
+import { useTheme } from '@/contexts/ThemeContext';
 import HomeContext from '@/pages/api/home/home.context';
 import { HTTP_ENDPOINTS, DEFAULT_HTTP_ENDPOINT } from '@/constants/endpoints';
 
 // WebSocket schema display names to match HTTP endpoint naming
 const WEBSOCKET_SCHEMA_LABELS: Record<string, string> = {
   'chat_stream': 'Chat Completions — Streaming',
-  'chat': 'Chat Completions — Non-Streaming', 
+  'chat': 'Chat Completions — Non-Streaming',
   'generate_stream': 'Generate — Streaming',
   'generate': 'Generate — Non-Streaming',
 };
@@ -21,9 +22,9 @@ interface Props {
 export const SettingDialog: FC<Props> = ({ open, onClose }) => {
   const { t } = useTranslation('settings');
   const modalRef = useRef<HTMLDivElement>(null);
+  const { lightMode: themeLightMode, setLightMode } = useTheme();
   const {
     state: {
-      lightMode,
       httpEndpoint,
       httpEndpoints,
       optionalGenerationParameters,
@@ -31,12 +32,13 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
       expandIntermediateSteps,
       intermediateStepOverride,
       enableIntermediateSteps,
+      enableStreamingRagVizOptions,
       webSocketSchemas,
     },
     dispatch: homeDispatch,
   } = useContext(HomeContext);
 
-  const [theme, setTheme] = useState<'light' | 'dark'>(lightMode);
+  const [theme, setTheme] = useState<'light' | 'dark'>(themeLightMode);
   const [selectedHttpEndpoint, setSelectedHttpEndpoint] = useState(
     sessionStorage.getItem('httpEndpoint') || httpEndpoint || DEFAULT_HTTP_ENDPOINT,
   );
@@ -63,6 +65,17 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
         ? false
         : intermediateStepOverride,
     );
+  const [enableStreamingRagVizOptionsToggle, setenableStreamingRagVizOptionsToggle] =
+    useState(
+      sessionStorage.getItem('enableStreamingRagVizOptions')
+        ? sessionStorage.getItem('enableStreamingRagVizOptions') === 'true'
+        : enableStreamingRagVizOptions,
+    );
+
+  // Sync local theme state when the actual theme changes
+  useEffect(() => {
+    setTheme(themeLightMode);
+  }, [themeLightMode]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -86,7 +99,7 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
 
     try {
       const parsed = JSON.parse(jsonString);
-      
+
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         return { isValid: false, error: 'JSON must be a valid object (not array or null)' };
       }
@@ -97,14 +110,14 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
         'messages', 'stream'
       ];
 
-      const conflictingFields = Object.keys(parsed).filter(key => 
+      const conflictingFields = Object.keys(parsed).filter(key =>
         reservedFields.includes(key)
       );
 
       if (conflictingFields.length > 0) {
-        return { 
-          isValid: false, 
-          error: `Cannot override reserved fields: ${conflictingFields.join(', ')}` 
+        return {
+          isValid: false,
+          error: `Cannot override reserved fields: ${conflictingFields.join(', ')}`
         };
       }
 
@@ -124,7 +137,7 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
   // Handle HTTP endpoint change
   const handleHttpEndpointChange = (endpoint: string) => {
     setSelectedHttpEndpoint(endpoint);
-    
+
     // Clear JSON validation error when switching to generate endpoints
     // since the additional JSON field won't be visible/used
     if (endpoint === HTTP_ENDPOINTS.GENERATE || endpoint === HTTP_ENDPOINTS.GENERATE_STREAM) {
@@ -138,9 +151,10 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
       return;
     }
 
-    const isChatEndpoint = selectedHttpEndpoint === HTTP_ENDPOINTS.CHAT || 
-                          selectedHttpEndpoint === HTTP_ENDPOINTS.CHAT_STREAM;
-    
+    const isChatEndpoint = selectedHttpEndpoint === HTTP_ENDPOINTS.CHAT ||
+                           selectedHttpEndpoint === HTTP_ENDPOINTS.CHAT_STREAM ||
+                           selectedHttpEndpoint === HTTP_ENDPOINTS.CHAT_CA_RAG;
+
     if (isChatEndpoint) {
       const validation = validateAdditionalJson(jsonBodyInput);
       if (!validation.isValid) {
@@ -149,7 +163,7 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
       }
     }
 
-    homeDispatch({ field: 'lightMode', value: theme });
+    setLightMode(theme);
     homeDispatch({ field: 'httpEndpoint', value: selectedHttpEndpoint || DEFAULT_HTTP_ENDPOINT });
     homeDispatch({ field: 'optionalGenerationParameters', value: jsonBodyInput });
     homeDispatch({ field: 'webSocketSchema', value: webSocketSchema || 'chat_stream' });
@@ -161,6 +175,10 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
     homeDispatch({
       field: 'enableIntermediateSteps',
       value: isIntermediateStepsEnabled,
+    });
+    homeDispatch({
+      field: 'enableStreamingRagVizOptions',
+      value: enableStreamingRagVizOptionsToggle,
     });
 
     sessionStorage.setItem('httpEndpoint', selectedHttpEndpoint || DEFAULT_HTTP_ENDPOINT);
@@ -174,6 +192,10 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
     sessionStorage.setItem(
       'enableIntermediateSteps',
       String(isIntermediateStepsEnabled),
+    );
+    sessionStorage.setItem(
+      'enableStreamingRagVizOptions',
+      String(enableStreamingRagVizOptionsToggle),
     );
 
     toast.success('Settings saved successfully');
@@ -240,7 +262,7 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
               </div>
             )}
             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Optional: Add custom JSON parameters for chat/chat stream endpoints only. 
+              Optional: Add custom JSON parameters for chat/chat stream endpoints only.
               Cannot override: messages, stream.
             </div>
           </>
@@ -318,6 +340,27 @@ export const SettingDialog: FC<Props> = ({ open, onClose }) => {
             className="text-sm font-medium text-gray-700 dark:text-gray-300"
           >
             Override intermediate Steps with same Id
+          </label>
+        </div>
+
+        <div className="flex align-middle text-sm font-medium text-gray-700 dark:text-gray-300 mt-4">
+          <input
+            type="checkbox"
+            id="enableStreamingRagVizOptions"
+            checked={enableStreamingRagVizOptionsToggle}
+            onChange={() => {
+              setenableStreamingRagVizOptionsToggle(
+                !enableStreamingRagVizOptionsToggle,
+              );
+            }}
+            disabled={!isIntermediateStepsEnabled}
+            className="mr-2"
+          />
+          <label
+            htmlFor="enableStreamingRagVizOptions"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Enable Context-Aware RAG Visualization (Experimental)
           </label>
         </div>
 

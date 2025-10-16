@@ -78,6 +78,7 @@ The application supports configuration via environment variables in a `.env` fil
 - `NEXT_PUBLIC_NAT_BACKEND_ADDRESS` - **Required** - Backend server address without protocol (e.g., '127.0.0.1:8000' or 'api.example.com')
   - Used for both HTTP API and WebSocket connections
   - Protocols are automatically added: `http`/`ws` in development, `https`/`wss` in production
+- `NEXT_PUBLIC_NAT_DEFAULT_ENDPOINT` - Default endpoint selection
 
 **MCP Configuration:**
 - `NEXT_PUBLIC_MCP_PATH` - MCP client API path (defaults to `/mcp/client/tool/list`)
@@ -87,6 +88,7 @@ The application supports configuration via environment variables in a `.env` fil
 - `NEXT_PUBLIC_NAT_CHAT_HISTORY_DEFAULT_ON` - Enable chat history persistence by default (true/false)
 - `NEXT_PUBLIC_NAT_RIGHT_MENU_OPEN` - Show right menu panel by default (true/false)
 - `NEXT_PUBLIC_NAT_ENABLE_INTERMEDIATE_STEPS` - Show AI reasoning steps by default (true/false)
+- `NEXT_PUBLIC_NAT_ADDITIONAL_VIZ_DEFAULT_ON` - View settings and toggles not part of the core functionality (true/false)
 
 
 **Optional Configuration:**
@@ -116,6 +118,7 @@ Settings can be configured by selecting the `Settings` icon located on the botto
   - **Chat Completions — Non-Streaming** - Standard OpenAI Chat Completions compatible API endpoint
   - **Generate — Streaming** - Text generation with streaming
   - **Generate — Non-Streaming** - Standard text generation
+  - **Context-Aware RAG — Non-Streaming (Experimental)** - Experimental integration with [Context-Aware RAG](https://github.com/NVIDIA/context-aware-rag) backend
 - `Optional Generation Parameters`: OpenAI Chat Completions compatible JSON parameters that can be added to the request body (available for chat endpoints)
 
 **WebSocket Configuration:** The WebSocket path defaults to `websocket`.
@@ -126,6 +129,14 @@ Settings can be configured by selecting the `Settings` icon located on the botto
   - **Generate — Non-Streaming** - Non-streaming generation over WebSocket
 
 **Note:** For intermediate results streaming, use **Chat Completions — Streaming** (`/chat/stream`) or **Generate — Streaming** (`/generate/stream`).
+
+### Live Data Streaming
+
+**Note:** This is an experimental feature
+
+The live data streaming feature allows visualization of real-time text updates across multiple streams. This is useful for monitoring ongoing processes or displaying live transcription or streaming data.
+
+For more detail, see the [README for live data streaming](DATA_STREAMING.md).
 
 ## Usage Examples
 

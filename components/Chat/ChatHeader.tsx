@@ -14,10 +14,17 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { env } from 'next-runtime-env';
 
 import { getWorkflowName } from '@/utils/app/helper';
+import { useTheme } from '@/contexts/ThemeContext';
 
 import HomeContext from '@/pages/api/home/home.context';
 
-export const ChatHeader = ({ webSocketModeRef = {} }) => {
+import { DataStreamControls } from './DataStreamControls';
+
+interface Props {
+  webSocketModeRef?: React.MutableRefObject<boolean>;
+}
+
+export const ChatHeader = ({ webSocketModeRef }: Props) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(
     env('NEXT_PUBLIC_NAT_RIGHT_MENU_OPEN') === 'true' ||
@@ -34,11 +41,13 @@ export const ChatHeader = ({ webSocketModeRef = {} }) => {
       chatHistory,
       webSocketMode,
       webSocketConnected,
-      lightMode,
       selectedConversation,
+      enableStreamingRagVizOptions,
     },
     dispatch: homeDispatch,
   } = useContext(HomeContext);
+
+  const { lightMode, setLightMode } = useTheme();
 
   const handleLogin = () => {
     console.log('Login clicked');
@@ -85,6 +94,10 @@ export const ChatHeader = ({ webSocketModeRef = {} }) => {
       <div
         className={`fixed right-0 top-0 h-12 flex items-center transition-all duration-300 ${
           isExpanded ? 'mr-2' : 'mr-2'
+        } ${
+          selectedConversation?.messages?.length === 0
+            ? 'bg-none'
+            : 'bg-[#76b900] dark:bg-black'
         }`}
       >
         <button
@@ -138,7 +151,7 @@ export const ChatHeader = ({ webSocketModeRef = {} }) => {
                 className={`flex items-center gap-1 justify-evenly text-sm font-medium text-black dark:text-white`}
               >
                 WebSocket{' '}
-                {webSocketModeRef?.current &&
+                {webSocketMode &&
                   (webSocketConnected ? (
                     <IconArrowsSort size={18} color="black" />
                   ) : (
@@ -147,41 +160,53 @@ export const ChatHeader = ({ webSocketModeRef = {} }) => {
               </span>
               <div
                 onClick={() => {
-                  const newWebSocketMode = !webSocketModeRef.current;
+                  const newWebSocketMode = !webSocketMode;
                   sessionStorage.setItem(
                     'webSocketMode',
                     String(newWebSocketMode),
                   );
-                  webSocketModeRef.current = newWebSocketMode;
+                  if (webSocketModeRef) {
+                    webSocketModeRef.current = newWebSocketMode;
+                  }
                   homeDispatch({
                     field: 'webSocketMode',
-                    value: !webSocketMode,
+                    value: newWebSocketMode,
                   });
                 }}
                 className={`relative inline-flex h-5 w-10 items-center cursor-pointer rounded-full transition-colors duration-300 ease-in-out ${
-                  webSocketModeRef.current
+                  webSocketMode
                     ? 'bg-black dark:bg-[#76b900]'
                     : 'bg-gray-200'
                 }`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 ease-in-out ${
-                    webSocketModeRef.current ? 'translate-x-6' : 'translate-x-0'
+                    webSocketMode ? 'translate-x-6' : 'translate-x-0'
                   }`}
                 />
               </div>
             </label>
           </div>
 
+          {/* Data Stream Controls - Allows toggling the display of streaming text data (from any
+              source). This feature is most commonly used when streaming in text that will be
+              ingested by context-aware RAG (https://github.com/NVIDIA/context-aware-rag), but is
+              not limited to that use case.
+
+              The database updates button provides a visual indicator for users to follow along as
+              entries from different data streams are added to a database. Note: this frontend
+              component does not track database updates directly; it simply offers a UI element for
+              users to observe the process. */}
+          {enableStreamingRagVizOptions && (
+            <DataStreamControls />
+          )}
+
           {/* Theme Toggle Button */}
           <div className="flex items-center dark:text-white text-black transition-colors duration-300">
             <button
               onClick={() => {
                 const newMode = lightMode === 'dark' ? 'light' : 'dark';
-                homeDispatch({
-                  field: 'lightMode',
-                  value: newMode,
-                });
+                setLightMode(newMode);
               }}
               className="rounded-full flex items-center justify-center bg-none dark:bg-gray-700 transition-colors duration-300 focus:outline-none"
             >

@@ -1,7 +1,6 @@
 
 'use client';
 
-import { ChatHeader } from './ChatHeader';
 import { ChatInput } from './ChatInput';
 import { ChatLoader } from './ChatLoader';
 import { MemoizedChatMessage } from './MemoizedChatMessage';
@@ -199,6 +198,11 @@ export const Chat = () => {
   const isUserInitiatedScroll = useRef(false);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  // Keep ref in sync with context toggle so callbacks read the latest value
+  useEffect(() => {
+    webSocketModeRef.current = webSocketMode;
+  }, [webSocketMode]);
+
   // WebSocket message tracking for stop generating functionality
   const activeUserMessageId = useRef<string | null>(null);
 
@@ -283,12 +287,10 @@ export const Chat = () => {
   }, [selectedConversation?.id]);
 
   useEffect(() => {
-    if (webSocketModeRef?.current && !webSocketConnectedRef.current) {
+    if (webSocketMode && !webSocketConnectedRef.current) {
       connectWebSocket();
-    }
-
-    // todo cancel ongoing connection attempts
-    else {
+    } else {
+      // todo cancel ongoing connection attempts
       if (websocketLoadingToastId) toast.dismiss(websocketLoadingToastId);
     }
 
@@ -298,7 +300,7 @@ export const Chat = () => {
         webSocketConnectedRef.current = false;
       }
     };
-  }, [webSocketModeRef?.current, webSocketURL]);
+  }, [webSocketMode, webSocketURL]);
 
   const connectWebSocket = async (retryCount = 0) => {
     const maxRetries = 3;
@@ -1362,7 +1364,6 @@ export const Chat = () => {
           ref={chatContainerRef}
           onScroll={handleScroll}
         >
-          <ChatHeader webSocketModeRef={webSocketModeRef} />
           {selectedConversation?.messages.map((message, index) => {
             if (!shouldRenderAssistantMessage(message)) {
               return null; // Hide empty assistant messages
