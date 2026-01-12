@@ -6,16 +6,16 @@
 set -e  # Exit on any error
 
 # Configuration
-ECR_REGISTRY="166838993696.dkr.ecr.us-east-1.amazonaws.com"
-IMAGE_NAME="talk-to-data-agent-ui"
+ECR_REGISTRY="241723985192.dkr.ecr.us-east-1.amazonaws.com"
+IMAGE_NAME="talk-to-data-agent-ui-prod"
 AWS_REGION="us-east-1"
-VERSION="latests"
-AWS_ACCOUNT_ID="166838993696"
-ECR_REPOSITORY="talk-to-data-agent-ui"
-IMAGE_TAG="latests"
+VERSION="1.0.0.2-RELEASE"
+AWS_ACCOUNT_ID="241723985192"
+ECR_REPOSITORY="talk-to-data-agent-ui-prod"
+IMAGE_TAG="1.0.0.2-RELEASE"
 PLATFORM="linux/amd64"
 BUILDER_NAME="multiplatform-builder"
-DOCKERFILE_PATH="Dockerfile1"
+DOCKERFILE_PATH="Dockerfile"
 
 echo "🚀 Starting Docker build and push process..."
 
@@ -56,13 +56,13 @@ echo "✅ Buildx builder ready"
 echo "🏗️  Building Docker image with dev overlay environment..."
 
 # Copy .env-dev-overlay as .env for the build context
-# if [ -f ".env-stage-overlay" ]; then
-#     cp .env-stage-overlay .env
-#     echo "✅ Copied .env-stage-overlay to .env for build context"
-# else
-#     echo "❌ .env-stage-overlay file not found!"
-#     exit 1
-# fi
+if [ -f ".env-prod-overlay" ]; then
+    cp .env-prod-overlay .env
+    echo "✅ Copied .env-prod-overlay to .env for build context"
+else
+    echo "❌ .env-prod-overlay file not found!"
+    exit 1
+fi
 
 # Build and push the Docker image using buildx for multi-platform support
 echo "🏗️  Building multi-platform image for: $PLATFORM"

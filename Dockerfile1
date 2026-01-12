@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+FROM node:18-alpine AS base
+
+# Install dependencies
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+# Clone the repository
+RUN apk add --no-cache git
+RUN git clone --depth 1 --branch develop https://github.com/thepatrickchin/NeMo-Agent-Toolkit-UI.git .
+
+# Install dependencies
+RUN npm ci
+
+# Build Next.js
+FROM deps AS builder
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# Production image - include ALL necessary files for proxy server
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy all necessary files for production with proxy
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.js ./next.config.js
+COPY --from=builder --chown=nextjs:nodejs /app/next-i18next.config.js ./next-i18next.config.js
+
+# Copy proxy server and related files
+COPY --from=builder --chown=nextjs:nodejs /app/proxy ./proxy
+COPY --from=builder --chown=nextjs:nodejs /app/constants ./constants
+COPY --from=builder --chown=nextjs:nodejs /app/utils ./utils
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# Start both Next.js server and proxy gateway
+CMD ["sh", "-c", "node node_modules/next/dist/bin/next start -p 3099 & sleep 5 && node proxy/server.js"]
