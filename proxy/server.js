@@ -143,11 +143,15 @@ backendProxy.on('proxyReqWs', (proxyReq, req) => {
 
 // WebSocket keep-alive
 backendProxy.on('open', (proxySocket) => {
+  console.log('[WebSocket] Backend connection opened');
   try {
     proxySocket.setKeepAlive?.(true, 15000);
     proxySocket.on('error', (e) =>
       console.error('[WebSocket] upstream socket error:', e.message),
     );
+    proxySocket.on('close', () => {
+      console.log('[WebSocket] Backend socket closed');
+    });
   } catch {}
 });
 
@@ -263,21 +267,30 @@ server.on('upgrade', (req, socket, head) => {
   const parsedUrl = url.parse(req.url);
   const pathname = parsedUrl.pathname || '/';
 
+  console.log(`[WebSocket] Incoming connection: ${req.url}`);
+  console.log(`[WebSocket] Pathname: ${pathname}, Search: ${parsedUrl.search || '(none)'}`);
+
   if (
     pathname === WEBSOCKET_PROXY_PATH ||
     pathname.startsWith(WEBSOCKET_PROXY_PATH + '?')
   ) {
     // Validate WS path
     const wsValidation = validateProxyWebSocketPath(pathname);
+    console.log('[WebSocket] Path validation:', wsValidation);
+    
     if (!wsValidation.isValid) {
-      console.warn(`[BLOCKED] ${wsValidation.error}`);
+      console.warn(`[WebSocket BLOCKED] ${wsValidation.error}`);
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
     }
 
     // Rewrite to backend WS path
+    const originalUrl = req.url;
     req.url = WEBSOCKET_BACKEND_PATH + (parsedUrl.search || '');
+    
+    console.log(`[WebSocket] Path transformed: ${originalUrl} -> ${req.url}`);
+    console.log(`[WebSocket] Proxying to: ${UPSTREAM_WS_ORIGIN}${req.url}`);
 
     backendProxy.ws(
       req,
@@ -290,16 +303,20 @@ server.on('upgrade', (req, socket, head) => {
       (err) => {
         if (err) {
           console.error('[WebSocket] Proxy error:', err.message);
+          console.error('[WebSocket] Target was:', UPSTREAM_WS_ORIGIN);
           try {
             socket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
           } catch {}
           socket.destroy();
+        } else {
+          console.log('[WebSocket] Connection established successfully');
         }
       },
     );
     return;
   }
 
+  console.log('[WebSocket] Routing to Next.js:', NEXT_DEV_TARGET);
   nextProxy.ws(
     req,
     socket,
@@ -312,6 +329,8 @@ server.on('upgrade', (req, socket, head) => {
       if (err) {
         console.error('[Next.js WS] Proxy error:', err.message);
         socket.destroy();
+      } else {
+        console.log('[Next.js WS] Connection established');
       }
     },
   );
