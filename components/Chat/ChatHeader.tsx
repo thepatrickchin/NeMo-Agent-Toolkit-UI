@@ -9,8 +9,8 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
-import React, { useContext, useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useContext, useState, useRef, useEffect, useMemo } from 'react';
+
 import { env } from 'next-runtime-env';
 
 import { loadContentFile } from '@/utils/app/content';
@@ -19,6 +19,12 @@ import HomeContext from '@/pages/api/home/home.context';
 import { useTheme } from '@/contexts/ThemeContext';
 
 import { DataStreamControls } from './DataStreamControls';
+import { MemoizedReactMarkdown } from '@/components/Markdown/MemoizedReactMarkdown';
+import { getReactMarkDownCustomComponents } from '@/components/Markdown/CustomComponents';
+
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 
 interface Props {
   webSocketModeRef?: React.MutableRefObject<boolean>;
@@ -49,6 +55,11 @@ export const ChatHeader = ({ webSocketModeRef }: Props) => {
   } = useContext(HomeContext);
 
   const { lightMode, setLightMode } = useTheme();
+
+  // Memoize the markdown components to prevent recreation on every render
+  const markdownComponents = useMemo(() => {
+    return getReactMarkDownCustomComponents();
+  }, []);
 
   const handleLogin = () => {
     console.log('Login clicked');
@@ -112,8 +123,23 @@ export const ChatHeader = ({ webSocketModeRef }: Props) => {
               'How can I assist you today?'}
           </div>
           {welcomeContent && (
-            <div className="text-sm text-left text-gray-600 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none bg-gray-100 dark:bg-gray-800 rounded-lg p-5">
-              <ReactMarkdown>{welcomeContent}</ReactMarkdown>
+            <div className="text-sm text-left text-gray-600 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none bg-gray-100 dark:bg-gray-800 rounded-lg p-5 [&>div>*:first-child]:mt-0 [&>div>*:last-child]:mb-0">
+              <MemoizedReactMarkdown
+                className="prose dark:prose-invert w-full max-w-none break-words"
+                rehypePlugins={[rehypeRaw] as any}
+                remarkPlugins={[
+                  remarkGfm,
+                  [
+                    remarkMath,
+                    {
+                      singleDollarTextMath: false,
+                    },
+                  ],
+                ]}
+                components={markdownComponents}
+              >
+                {welcomeContent}
+              </MemoizedReactMarkdown>
             </div>
           )}
         </div>
