@@ -25,9 +25,18 @@ export const updateConversation = (
 
 export const saveConversation = (conversation: Conversation) => {
   try {
+    // Strip intermediateSteps to reduce storage size
+    const conversationForStorage = {
+      ...conversation,
+      messages: conversation.messages.map(msg => {
+        const { intermediateSteps, ...messageWithoutSteps } = msg as any;
+        return messageWithoutSteps;
+      })
+    };
+    
     sessionStorage.setItem(
       'selectedConversation',
-      JSON.stringify(conversation),
+      JSON.stringify(conversationForStorage),
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
@@ -39,9 +48,18 @@ export const saveConversation = (conversation: Conversation) => {
 
 export const saveConversations = (conversations: Conversation[]) => {
   try {
+    // Strip intermediateSteps from all conversations to reduce storage size
+    const conversationsForStorage = conversations.map(conv => ({
+      ...conv,
+      messages: conv.messages.map(msg => {
+        const { intermediateSteps, ...messageWithoutSteps } = msg as any;
+        return messageWithoutSteps;
+      })
+    }));
+    
     sessionStorage.setItem(
       'conversationHistory',
-      JSON.stringify(conversations),
+      JSON.stringify(conversationsForStorage),
     );
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
