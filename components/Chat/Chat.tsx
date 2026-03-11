@@ -527,9 +527,37 @@ export const Chat = () => {
           return false;
         }
         
+        // Track if OAuth completed successfully
+        let oauthCompleted = false;
+        
+        // Monitor popup closure to stop loading state
+        const checkPopupClosed = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkPopupClosed);
+            window.removeEventListener('message', handleOAuthComplete);
+            
+            // Stop loading/generating state when popup closes
+            homeDispatch({ field: 'loading', value: false });
+            homeDispatch({ field: 'messageIsStreaming', value: false });
+            
+            // Show different message based on completion status
+            if (oauthCompleted) {
+              toast.success('Authentication completed successfully.');
+            } else {
+              toast('Authentication window was closed.');
+            }
+          }
+        }, 500);
+        
         const handleOAuthComplete = (event: MessageEvent) => {
+          oauthCompleted = true;
+          clearInterval(checkPopupClosed);
           if (popup && !popup.closed) popup.close();
           window.removeEventListener('message', handleOAuthComplete);
+          // Stop loading state on successful completion
+          homeDispatch({ field: 'loading', value: false });
+          homeDispatch({ field: 'messageIsStreaming', value: false });
+          toast.success('Authentication completed successfully.');
         };
         window.addEventListener('message', handleOAuthComplete);
       }
@@ -771,17 +799,42 @@ export const Chat = () => {
                 'Popup blocked! Please enable popups in your browser to continue with authentication.',
                 { duration: 6000 }
               );
+              // Stop loading state
+              homeDispatch({ field: 'loading', value: false });
+              homeDispatch({ field: 'messageIsStreaming', value: false });
             } else {
-              // Double-check after delay
-              setTimeout(() => {
+              // Track if OAuth completed successfully
+              let oauthCompleted = false;
+              
+              // Listen for successful completion message
+              const handleOAuthSuccess = (event: MessageEvent) => {
+                oauthCompleted = true;
+                window.removeEventListener('message', handleOAuthSuccess);
+              };
+              window.addEventListener('message', handleOAuthSuccess);
+              
+              // Monitor popup closure to stop loading state
+              const checkPopupClosed = setInterval(() => {
                 try {
-                  if (!popup || popup.closed) {
-                    toast.error('Authentication popup was blocked or closed.');
+                  if (popup.closed) {
+                    clearInterval(checkPopupClosed);
+                    window.removeEventListener('message', handleOAuthSuccess);
+                    
+                    // Stop loading/generating state when popup closes
+                    homeDispatch({ field: 'loading', value: false });
+                    homeDispatch({ field: 'messageIsStreaming', value: false });
+                    
+                    // Show different message based on completion status
+                    if (oauthCompleted) {
+                      toast.success('Authentication completed successfully.');
+                    } else {
+                      toast('Authentication window was closed.');
+                    }
                   }
                 } catch (e) {
                   // Ignore cross-origin errors
                 }
-              }, 1000);
+              }, 500);
             }
           } else {
             console.error('OAuth URL validation failed, refusing to open potentially malicious URL:', oauthUrl);
