@@ -521,22 +521,11 @@ export const Chat = () => {
         // Check if popup was blocked
         if (!popup || popup.closed || typeof popup.closed === 'undefined') {
           toast.error(
-            'Popup blocked! Please enable popups in your browser to continue with authentication.',
+            'Popup blocked. Please enable popups in your browser to continue with authentication.',
             { duration: 6000 }
           );
           return false;
         }
-        
-        // Double-check after delay (for Firefox/Safari)
-        setTimeout(() => {
-          try {
-            if (!popup || popup.closed) {
-              toast.error('Authentication popup was blocked or closed.');
-            }
-          } catch (e) {
-            // Ignore cross-origin errors (popup is likely working)
-          }
-        }, 1000);
         
         const handleOAuthComplete = (event: MessageEvent) => {
           if (popup && !popup.closed) popup.close();
