@@ -517,6 +517,27 @@ export const Chat = () => {
           'oauth-popup',
           'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer'
         );
+        
+        // Check if popup was blocked
+        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+          toast.error(
+            'Popup blocked! Please enable popups in your browser to continue with authentication.',
+            { duration: 6000 }
+          );
+          return false;
+        }
+        
+        // Double-check after delay (for Firefox/Safari)
+        setTimeout(() => {
+          try {
+            if (!popup || popup.closed) {
+              toast.error('Authentication popup was blocked or closed.');
+            }
+          } catch (e) {
+            // Ignore cross-origin errors (popup is likely working)
+          }
+        }, 1000);
+        
         const handleOAuthComplete = (event: MessageEvent) => {
           if (popup && !popup.closed) popup.close();
           window.removeEventListener('message', handleOAuthComplete);
@@ -753,7 +774,26 @@ export const Chat = () => {
           // Validate URL before opening to prevent Open Redirect attacks
           if (isValidConsentPromptURL(oauthUrl)) {
             // Open the validated OAuth URL in a new tab
-            window.open(oauthUrl, '_blank', 'noopener,noreferrer');
+            const popup = window.open(oauthUrl, '_blank', 'noopener,noreferrer');
+            
+            // Check if popup was blocked
+            if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+              toast.error(
+                'Popup blocked! Please enable popups in your browser to continue with authentication.',
+                { duration: 6000 }
+              );
+            } else {
+              // Double-check after delay
+              setTimeout(() => {
+                try {
+                  if (!popup || popup.closed) {
+                    toast.error('Authentication popup was blocked or closed.');
+                  }
+                } catch (e) {
+                  // Ignore cross-origin errors
+                }
+              }, 1000);
+            }
           } else {
             console.error('OAuth URL validation failed, refusing to open potentially malicious URL:', oauthUrl);
             toast.error('Invalid OAuth URL received. Please contact support.');
