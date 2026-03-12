@@ -772,11 +772,40 @@ export const Chat = () => {
     return result;
   };
 
+  // Message queue to ensure sequential WebSocket message processing
+  const messageQueueRef = useRef<any[]>([]);
+  const isProcessingRef = useRef(false);
+
   /**
    * Main WebSocket message handler
    * Processes different message types and updates conversation state
+   * Uses a queue to ensure sequential processing and avoid race conditions
    */
   const handleWebSocketMessage = (message: any) => {
+    // Add message to queue
+    messageQueueRef.current.push(message);
+    
+    // If already processing, the current processor will handle queued messages
+    if (isProcessingRef.current) {
+      return;
+    }
+    
+    // Start processing queue
+    isProcessingRef.current = true;
+    
+    // Process all messages in queue sequentially
+    while (messageQueueRef.current.length > 0) {
+      const currentMessage = messageQueueRef.current.shift()!;
+      processWebSocketMessage(currentMessage);
+    }
+    
+    isProcessingRef.current = false;
+  };
+  
+  /**
+   * Internal message processor (synchronous)
+   */
+  const processWebSocketMessage = (message: any) => {
     // Validate message structure AND conversation ID with detailed error reporting
     try {
       validateWebSocketMessageWithConversationId(message);
