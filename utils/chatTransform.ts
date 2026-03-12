@@ -134,6 +134,9 @@ export function createAssistantMessage(
 
 /**
  * Updates assistant message content immutably with proper content merging
+ * 
+ * FIX: Empty strings are treated as "preserve existing content" to prevent race condition bugs
+ * where stale empty content from array snapshots would overwrite newly added text.
  */
 export function updateAssistantMessage(
   message: Message,
@@ -142,7 +145,11 @@ export function updateAssistantMessage(
 ): Message {
   return {
     ...message,
-    content: newContent !== undefined ? newContent : message.content || '',
+    // Only update content if explicitly provided and non-empty
+    // Empty strings or whitespace-only strings preserve existing content
+    content: (newContent !== undefined && newContent.trim() !== '') 
+      ? newContent 
+      : message.content || '',
     intermediateSteps: newIntermediateSteps || message.intermediateSteps || [],
     timestamp: Date.now()
   };
