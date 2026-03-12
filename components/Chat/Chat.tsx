@@ -564,6 +564,11 @@ export const Chat = () => {
     messages: Message[]
   ): Message[] => {
     if (!shouldAppendResponse(message)) {
+      console.log('[processSystemResponseMessage] Skipping:', {
+        id: message.id,
+        type: message.type,
+        reason: 'shouldAppendResponse returned false'
+      });
       return messages;
     }
 
@@ -573,12 +578,21 @@ export const Chat = () => {
     const lastMessage = messages.at(-1);
     const isLastAssistant = lastMessage?.role === 'assistant';
 
+    console.log('[processSystemResponseMessage] Appending text:', {
+      id: message.id,
+      text_length: incomingText.length,
+      last_message_id: lastMessage?.id,
+      is_last_assistant: isLastAssistant,
+      last_message_content_length: lastMessage?.content?.length || 0
+    });
+
     if (isLastAssistant) {
       // Append to existing assistant message using pure helper
       const combinedContent = appendAssistantText(
         lastMessage.content || '',
         incomingText
       );
+      console.log('[processSystemResponseMessage] Combined content length:', combinedContent.length);
       return messages.map((m, idx) =>
         idx === messages.length - 1
           ? updateAssistantMessage(m, combinedContent)
@@ -586,6 +600,7 @@ export const Chat = () => {
       );
     } else {
       // Create new assistant message using pure helper
+      console.log('[processSystemResponseMessage] Creating new assistant message');
       return [
         ...messages,
         createAssistantMessage(message.id, message.parent_id, incomingText),
@@ -724,16 +739,33 @@ export const Chat = () => {
     const messageConversationId = message.conversation_id;
     const currentConversationId = selectedConversationRef.current?.id;
 
+    console.log('[WebSocket] Message received:', {
+      type: message.type,
+      status: message.status,
+      id: message.id,
+      messageConversationId,
+      currentConversationId,
+      activeUserMessageId: activeUserMessageId.current
+    });
+
     // Validate conversation ID first
     if (messageConversationId !== currentConversationId) {
+      console.log('[WebSocket] Message ignored - wrong conversation');
       return;  // Wrong conversation - ignore
     }
 
     // Handle complete messages FIRST (before checking activeUserMessageId)
     // This ensures stop signal is always processed even if tracking was cleared
     if (isSystemResponseComplete(message)) {
+      console.log('[Complete Message] Received:', {
+        id: message.id,
+        parent_id: message.parent_id,
+        conversation_id: message.conversation_id,
+        activeUserMessageId: activeUserMessageId.current
+      });
       homeDispatch({ field: 'loading', value: false });
       setTimeout(() => {
+        console.log('[Complete Message] Stopping streaming...');
         homeDispatch({ field: 'messageIsStreaming', value: false });
         // Clear active tracking when response is complete
         activeUserMessageId.current = null;
@@ -793,8 +825,16 @@ export const Chat = () => {
 
     // Skip creating/updating assistant text for system_response:complete using type guard
     if (isSystemResponseComplete(message)) {
+      console.log('[Complete Message] Skipping content update (early return)');
       return;
     }
+
+    console.log('[WebSocket] Processing message content:', {
+      id: message.id,
+      type: message.type,
+      has_text: !!(message as any).content?.text,
+      will_append: shouldAppendResponse(message)
+    });
 
     // Find target conversation with enhanced error reporting
     const currentConversations = conversationsRef.current;
