@@ -536,6 +536,14 @@ export const Chat = () => {
     updatedConversation: Conversation,
     currentSelectedConversation: Conversation | null | undefined
   ) => {
+    console.log('[updateRefsAndDispatch] Updating conversation:', {
+      conversation_id: updatedConversation.id,
+      message_count: updatedConversation.messages.length,
+      last_message_id: updatedConversation.messages.at(-1)?.id,
+      last_message_content_length: updatedConversation.messages.at(-1)?.content?.length || 0,
+      last_message_content_preview: updatedConversation.messages.at(-1)?.content?.substring(0, 100)
+    });
+
     // Write-through to refs before dispatch to avoid stale reads on next WS tick
     conversationsRef.current = updatedConversations;
     if (currentSelectedConversation?.id === updatedConversation.id) {
@@ -552,6 +560,11 @@ export const Chat = () => {
         value: updatedConversation,
       });
       saveConversation(updatedConversation);
+      
+      console.log('[updateRefsAndDispatch] Saved to sessionStorage:', {
+        conversation_id: updatedConversation.id,
+        last_message_content_length: updatedConversation.messages.at(-1)?.content?.length || 0
+      });
     }
   };
 
@@ -610,6 +623,11 @@ export const Chat = () => {
 
   /**
    * Processes intermediate step messages without modifying content
+   * 
+   * FIX: Race condition where rapid WebSocket messages (response text + intermediate updates)
+   * would cause content loss. The issue was passing m.content explicitly when updating steps,
+   * which could be stale if the previous content update hadn't propagated. Now passes undefined
+   * to preserve existing message content via the spread operator in updateAssistantMessage.
    */
   const processIntermediateStepMessage = (
     message: WebSocketInbound,
@@ -620,12 +638,26 @@ export const Chat = () => {
     const lastMessage = messages.at(-1);
     const isLastAssistant = lastMessage?.role === 'assistant';
 
+    // Check if an assistant message with this intermediate message's parent_id already exists
+    const existingMessageWithSameParent = messages.find(
+      (m) => m.role === 'assistant' && m.id === message.parent_id
+    );
+
+    console.log('[processIntermediateStepMessage]:', {
+      message_id: message.id,
+      parent_id: message.parent_id,
+      has_existing_with_same_parent: !!existingMessageWithSameParent,
+      is_last_assistant: isLastAssistant,
+      last_message_id: lastMessage?.id
+    });
+
     if (!isLastAssistant) {
       // Create new assistant message with empty content for intermediate steps
       const stepWithIndex = { ...message, index: 0 };
+      console.log('[processIntermediateStepMessage] Creating new assistant message');
       return [
         ...messages,
-        createAssistantMessage(message.id, message.parent_id, '', [
+        createAssistantMessage(message.parent_id === 'root' ? message.id : message.parent_id, message.parent_id, '', [
           stepWithIndex,
         ]),
       ];
@@ -641,8 +673,22 @@ export const Chat = () => {
           : Boolean(intermediateStepOverride)
       );
 
+      console.log('[processIntermediateStepMessage] Updating intermediate steps:', {
+        last_message_id: messages[lastIdx]?.id,
+        existing_content_length: messages[lastIdx]?.content?.length || 0,
+        merged_steps_length: mergedSteps.length
+      });
+
+      // FIX: Pass undefined for content to preserve existing message content
+      // ISSUE: When rapid WebSocket messages arrive (e.g., response text followed by intermediate update),
+      //        the intermediate message was reading m.content from the messages array parameter, which could
+      //        be stale (empty string "") if the previous response text update hadn't propagated yet.
+      //        Passing the empty string explicitly would overwrite the newly added content.
+      // SOLUTION: Pass undefined instead of m.content. This tells updateAssistantMessage to preserve
+      //           whatever content exists in the message object (via ...message spread), avoiding the
+      //           race condition where array parameter data is stale.
       return messages.map((m, idx) =>
-        idx === lastIdx ? updateAssistantMessage(m, m.content, mergedSteps) : m
+        idx === lastIdx ? updateAssistantMessage(m, undefined, mergedSteps) : m
       );
     }
   };
@@ -701,8 +747,15 @@ export const Chat = () => {
       return messages;
     }
 
+    const lastMessage = messages.at(-1);
+    console.log('[processObservabilityTraceMessage] Adding trace ID:', {
+      trace_id: traceId,
+      last_message_id: lastMessage?.id,
+      last_message_content_length: lastMessage?.content?.length || 0
+    });
+
     // Attach trace ID to last assistant message
-    return messages.map((m, idx) =>
+    const result = messages.map((m, idx) =>
       idx === messages.length - 1
         ? {
             ...m,
@@ -711,6 +764,12 @@ export const Chat = () => {
           }
         : m
     );
+
+    console.log('[processObservabilityTraceMessage] After adding trace ID:', {
+      last_message_content_length: result.at(-1)?.content?.length || 0
+    });
+
+    return result;
   };
 
   /**
@@ -825,16 +884,12 @@ export const Chat = () => {
 
     // Skip creating/updating assistant text for system_response:complete using type guard
     if (isSystemResponseComplete(message)) {
-      console.log('[Complete Message] Skipping content update (early return)');
+      console.log('[Complete Message] Skipping content update (early return):', {
+        id: message.id,
+        has_text: !!(message as any).content?.text
+      });
       return;
     }
-
-    console.log('[WebSocket] Processing message content:', {
-      id: message.id,
-      type: message.type,
-      has_text: !!(message as any).content?.text,
-      will_append: shouldAppendResponse(message)
-    });
 
     // Find target conversation with enhanced error reporting
     const currentConversations = conversationsRef.current;
@@ -858,12 +913,37 @@ export const Chat = () => {
       return;
     }
 
+    console.log('[WebSocket] Processing message content:', {
+      id: message.id,
+      type: message.type,
+      has_text: !!(message as any).content?.text,
+      will_append: shouldAppendResponse(message),
+      current_messages_count: targetConversation.messages.length,
+      last_message_id: targetConversation.messages.at(-1)?.id,
+      last_message_content_length: targetConversation.messages.at(-1)?.content?.length || 0
+    });
+
     // Process message based on type using pure helpers
     let updatedMessages = targetConversation.messages;
+    console.log('[handleWebSocketMessage] Before processing:', {
+      message_id: message.id,
+      message_type: message.type,
+      current_message_count: updatedMessages.length,
+      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0
+    });
+
     updatedMessages = processSystemResponseMessage(message, updatedMessages);
     updatedMessages = processIntermediateStepMessage(message, updatedMessages);
     updatedMessages = processErrorMessage(message, updatedMessages);
     updatedMessages = processObservabilityTraceMessage(message, updatedMessages);
+
+    console.log('[handleWebSocketMessage] After processing:', {
+      message_id: message.id,
+      final_message_count: updatedMessages.length,
+      last_message_id: updatedMessages.at(-1)?.id,
+      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0,
+      last_message_content_preview: updatedMessages.at(-1)?.content?.substring(0, 50)
+    });
 
     // Update conversation with new messages and title using pure helper
     const updatedConversation = applyMessageUpdate(

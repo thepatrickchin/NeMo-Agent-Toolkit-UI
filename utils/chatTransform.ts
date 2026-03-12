@@ -134,6 +134,14 @@ export function createAssistantMessage(
 
 /**
  * Updates assistant message content immutably with proper content merging
+ * 
+ * @param message - The message to update
+ * @param newContent - New content to set. Pass undefined to preserve existing content (important for race condition prevention)
+ * @param newIntermediateSteps - New intermediate steps to set
+ * @returns Updated message with new content and/or intermediate steps
+ * 
+ * IMPORTANT: When updating only intermediateSteps, pass undefined for newContent (not message.content)
+ * to avoid race conditions where the content from the messages array might be stale.
  */
 export function updateAssistantMessage(
   message: Message,
