@@ -724,13 +724,15 @@ export const Chat = () => {
     const messageConversationId = message.conversation_id;
     const currentConversationId = selectedConversationRef.current?.id;
 
-    if (activeUserMessageId.current === null || messageConversationId !== currentConversationId) {
-      return;
+    // Validate conversation ID first
+    if (messageConversationId !== currentConversationId) {
+      return;  // Wrong conversation - ignore
     }
 
-    // End loading indicators as messages arrive
-    homeDispatch({ field: 'loading', value: false });
+    // Handle complete messages FIRST (before checking activeUserMessageId)
+    // This ensures stop signal is always processed even if tracking was cleared
     if (isSystemResponseComplete(message)) {
+      homeDispatch({ field: 'loading', value: false });
       setTimeout(() => {
         homeDispatch({ field: 'messageIsStreaming', value: false });
         // Clear active tracking when response is complete
@@ -738,7 +740,16 @@ export const Chat = () => {
         // Clear from sessionStorage
         sessionStorage.removeItem(`activeUserMessageId_${message.conversation_id}`);
       }, 200);
+      // Don't return here - let message continue to be processed for content updates
     }
+
+    // For non-complete messages, check if we're actively tracking
+    if (activeUserMessageId.current === null && !isSystemResponseComplete(message)) {
+      return;  // Not tracking and not a complete message - ignore
+    }
+
+    // End loading indicators as messages arrive
+    homeDispatch({ field: 'loading', value: false });
 
     // Handle human-in-the-loop interactions using type guard
     if (isSystemInteractionMessage(message)) {
