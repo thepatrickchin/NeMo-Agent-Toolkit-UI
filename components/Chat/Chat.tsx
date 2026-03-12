@@ -588,24 +588,53 @@ export const Chat = () => {
     const incomingText = isSystemResponseMessage(message)
       ? message.content?.text?.trim() || ''
       : '';
+    
+    // The assistant message ID should be the parent_id (user message ID that triggered this response)
+    const targetAssistantMessageId = message.parent_id || message.id;
+    
+    // Check if we already have an assistant message for this conversation turn
+    const existingAssistantIndex = messages.findIndex(
+      m => m.role === 'assistant' && m.id === targetAssistantMessageId
+    );
+    
     const lastMessage = messages.at(-1);
     const isLastAssistant = lastMessage?.role === 'assistant';
 
     console.log('[processSystemResponseMessage] Appending text:', {
       id: message.id,
+      parent_id: message.parent_id,
+      target_assistant_id: targetAssistantMessageId,
       text_length: incomingText.length,
+      existing_assistant_index: existingAssistantIndex,
       last_message_id: lastMessage?.id,
       is_last_assistant: isLastAssistant,
       last_message_content_length: lastMessage?.content?.length || 0
     });
 
-    if (isLastAssistant) {
-      // Append to existing assistant message using pure helper
+    if (existingAssistantIndex >= 0) {
+      // Update existing assistant message with matching ID
+      const existingMessage = messages[existingAssistantIndex];
+      const combinedContent = appendAssistantText(
+        existingMessage.content || '',
+        incomingText
+      );
+      console.log('[processSystemResponseMessage] Updating existing message:', {
+        index: existingAssistantIndex,
+        old_content_length: existingMessage.content?.length || 0,
+        new_content_length: combinedContent.length
+      });
+      return messages.map((m, idx) =>
+        idx === existingAssistantIndex
+          ? updateAssistantMessage(m, combinedContent)
+          : m
+      );
+    } else if (isLastAssistant && lastMessage.id === targetAssistantMessageId) {
+      // Last message is the target assistant message (shouldn't happen if existingAssistantIndex works)
       const combinedContent = appendAssistantText(
         lastMessage.content || '',
         incomingText
       );
-      console.log('[processSystemResponseMessage] Combined content length:', combinedContent.length);
+      console.log('[processSystemResponseMessage] Appending to last message:', combinedContent.length);
       return messages.map((m, idx) =>
         idx === messages.length - 1
           ? updateAssistantMessage(m, combinedContent)
@@ -613,10 +642,12 @@ export const Chat = () => {
       );
     } else {
       // Create new assistant message using pure helper
-      console.log('[processSystemResponseMessage] Creating new assistant message');
+      // IMPORTANT: Use parent_id as the assistant message ID so that subsequent intermediate
+      // messages (which also use parent_id) will update the SAME assistant message
+      console.log('[processSystemResponseMessage] Creating new assistant message with ID:', targetAssistantMessageId);
       return [
         ...messages,
-        createAssistantMessage(message.id, message.parent_id, incomingText),
+        createAssistantMessage(targetAssistantMessageId, message.parent_id, incomingText),
       ];
     }
   };
@@ -628,6 +659,11 @@ export const Chat = () => {
    * would cause content loss. The issue was passing m.content explicitly when updating steps,
    * which could be stale if the previous content update hadn't propagated. Now passes undefined
    * to preserve existing message content via the spread operator in updateAssistantMessage.
+   * 
+   * FIX: Message ID mismatch - system_response_message and system_intermediate_message were
+   * creating separate assistant messages with different IDs (message.id vs message.parent_id).
+   * Now both use message.parent_id as the assistant message ID to ensure they update the SAME
+   * message in the UI.
    */
   const processIntermediateStepMessage = (
     message: WebSocketInbound,
@@ -635,61 +671,62 @@ export const Chat = () => {
   ): Message[] => {
     if (!isSystemIntermediateMessage(message)) return messages;
 
+    // The assistant message ID should be the parent_id (user message ID that triggered this response)
+    const targetAssistantMessageId = message.parent_id === 'root' ? message.id : message.parent_id;
+    
+    // Check if we already have an assistant message for this conversation turn
+    const existingAssistantIndex = messages.findIndex(
+      m => m.role === 'assistant' && m.id === targetAssistantMessageId
+    );
+    
     const lastMessage = messages.at(-1);
     const isLastAssistant = lastMessage?.role === 'assistant';
 
-    // Check if an assistant message with this intermediate message's parent_id already exists
-    const existingMessageWithSameParent = messages.find(
-      (m) => m.role === 'assistant' && m.id === message.parent_id
-    );
-
-    console.log('[processIntermediateStepMessage]:', {
+    console.log('[processIntermediateStepMessage] Entry:', {
       message_id: message.id,
       parent_id: message.parent_id,
-      has_existing_with_same_parent: !!existingMessageWithSameParent,
+      target_assistant_id: targetAssistantMessageId,
+      existing_assistant_index: existingAssistantIndex,
       is_last_assistant: isLastAssistant,
-      last_message_id: lastMessage?.id
+      last_message_id: lastMessage?.id,
+      last_message_content_length: lastMessage?.content?.length || 0,
+      all_messages: messages.map(m => ({ id: m.id, role: m.role, content_length: m.content?.length || 0 }))
     });
 
-    if (!isLastAssistant) {
-      // Create new assistant message with empty content for intermediate steps
-      const stepWithIndex = { ...message, index: 0 };
-      console.log('[processIntermediateStepMessage] Creating new assistant message');
-      return [
-        ...messages,
-        createAssistantMessage(message.parent_id === 'root' ? message.id : message.parent_id, message.parent_id, '', [
-          stepWithIndex,
-        ]),
-      ];
-    } else {
-      // Update intermediate steps on existing assistant message using pure helper
-      const lastIdx = messages.length - 1;
-      const lastSteps = messages[lastIdx]?.intermediateSteps || [];
+    if (existingAssistantIndex >= 0) {
+      // Update existing assistant message with matching ID
+      const existingMessage = messages[existingAssistantIndex];
+      const existingSteps = existingMessage.intermediateSteps || [];
       const mergedSteps = mergeIntermediateSteps(
-        lastSteps,
+        existingSteps,
         message,
         sessionStorage.getItem('intermediateStepOverride') === 'false'
           ? false
           : Boolean(intermediateStepOverride)
       );
 
-      console.log('[processIntermediateStepMessage] Updating intermediate steps:', {
-        last_message_id: messages[lastIdx]?.id,
-        existing_content_length: messages[lastIdx]?.content?.length || 0,
+      console.log('[processIntermediateStepMessage] Updating existing message:', {
+        index: existingAssistantIndex,
+        message_id: existingMessage.id,
+        existing_content_length: existingMessage.content?.length || 0,
         merged_steps_length: mergedSteps.length
       });
 
       // FIX: Pass undefined for content to preserve existing message content
-      // ISSUE: When rapid WebSocket messages arrive (e.g., response text followed by intermediate update),
-      //        the intermediate message was reading m.content from the messages array parameter, which could
-      //        be stale (empty string "") if the previous response text update hadn't propagated yet.
-      //        Passing the empty string explicitly would overwrite the newly added content.
-      // SOLUTION: Pass undefined instead of m.content. This tells updateAssistantMessage to preserve
-      //           whatever content exists in the message object (via ...message spread), avoiding the
-      //           race condition where array parameter data is stale.
+      // This prevents race conditions where content from the messages array might be stale
       return messages.map((m, idx) =>
-        idx === lastIdx ? updateAssistantMessage(m, undefined, mergedSteps) : m
+        idx === existingAssistantIndex ? updateAssistantMessage(m, undefined, mergedSteps) : m
       );
+    } else {
+      // Create new assistant message with empty content for intermediate steps
+      const stepWithIndex = { ...message, index: 0 };
+      console.log('[processIntermediateStepMessage] Creating new assistant message with ID:', targetAssistantMessageId);
+      return [
+        ...messages,
+        createAssistantMessage(targetAssistantMessageId, message.parent_id, '', [
+          stepWithIndex,
+        ]),
+      ];
     }
   };
 
@@ -958,11 +995,24 @@ export const Chat = () => {
       message_id: message.id,
       message_type: message.type,
       current_message_count: updatedMessages.length,
-      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0
+      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0,
+      all_messages: updatedMessages.map(m => ({ id: m.id, role: m.role, content_length: m.content?.length || 0 }))
     });
 
     updatedMessages = processSystemResponseMessage(message, updatedMessages);
+    console.log('[handleWebSocketMessage] After processSystemResponseMessage:', {
+      message_count: updatedMessages.length,
+      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0,
+      all_messages: updatedMessages.map(m => ({ id: m.id, role: m.role, content_length: m.content?.length || 0 }))
+    });
+    
     updatedMessages = processIntermediateStepMessage(message, updatedMessages);
+    console.log('[handleWebSocketMessage] After processIntermediateStepMessage:', {
+      message_count: updatedMessages.length,
+      last_message_content_length: updatedMessages.at(-1)?.content?.length || 0,
+      all_messages: updatedMessages.map(m => ({ id: m.id, role: m.role, content_length: m.content?.length || 0 }))
+    });
+    
     updatedMessages = processErrorMessage(message, updatedMessages);
     updatedMessages = processObservabilityTraceMessage(message, updatedMessages);
 
