@@ -493,7 +493,7 @@ export const Chat = () => {
   }, [intermediateStepOverride]);
 
   /**
-   * Handles OAuth consent flow by opening popup window
+   * Handles OAuth consent flow by navigating to the authorization URL in the same window
    */
   const handleOAuthConsent = (message: WebSocketInbound) => {
     if (!isSystemInteractionMessage(message)) return false;
@@ -501,23 +501,14 @@ export const Chat = () => {
     if (message.content?.input_type === 'oauth_consent') {
       const oauthUrl = extractOAuthUrl(message);
       if (oauthUrl) {
-        // Validate URL before opening
+        // Validate URL before navigating
         if (!isValidConsentPromptURL(oauthUrl)) {
           console.error('OAuth URL validation failed in popup handler, refusing to open potentially malicious URL.');
           toast.error('OAuth URL validation failed.');
           return false;
         }
-        
-        const popup = window.open(
-          oauthUrl,
-          'oauth-popup',
-          'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer'
-        );
-        const handleOAuthComplete = (event: MessageEvent) => {
-          if (popup && !popup.closed) popup.close();
-          window.removeEventListener('message', handleOAuthComplete);
-        };
-        window.addEventListener('message', handleOAuthComplete);
+
+        window.location.href = oauthUrl;
       }
       return true;
     }
@@ -748,8 +739,7 @@ export const Chat = () => {
         if (oauthUrl) {
           // Validate URL before opening to prevent Open Redirect attacks
           if (isValidConsentPromptURL(oauthUrl)) {
-            // Open the validated OAuth URL in a new tab
-            window.open(oauthUrl, '_blank', 'noopener,noreferrer');
+            window.location.href = oauthUrl;
           } else {
             console.error('OAuth URL validation failed, refusing to open potentially malicious URL:', oauthUrl);
             toast.error('Invalid OAuth URL received. Please contact support.');
