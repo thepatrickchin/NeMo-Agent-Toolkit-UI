@@ -492,8 +492,18 @@ export const Chat = () => {
     }
   }, [intermediateStepOverride]);
 
+  const persistOAuthPendingMessage = () => {
+    const conversation = selectedConversationRef.current;
+    if (!conversation) return;
+    const lastUserMessage = fetchLastMessage({ messages: conversation.messages, role: 'user' });
+    if (!lastUserMessage) return;
+    sessionStorage.setItem('oauth_pending_message', JSON.stringify(lastUserMessage));
+    sessionStorage.setItem('oauth_pending_conversation_id', conversation.id);
+  };
+
   /**
-   * Handles OAuth consent flow by opening popup window
+   * Handles OAuth consent flow by navigating to the authorization URL in the same window.
+   * Persists the last user message so it can be resubmitted after returning from auth.
    */
   const handleOAuthConsent = (message: WebSocketInbound) => {
     if (!isSystemInteractionMessage(message)) return false;
@@ -501,23 +511,17 @@ export const Chat = () => {
     if (message.content?.input_type === 'oauth_consent') {
       const oauthUrl = extractOAuthUrl(message);
       if (oauthUrl) {
-        // Validate URL before opening
+        // Validate URL before navigating
         if (!isValidConsentPromptURL(oauthUrl)) {
           console.error('OAuth URL validation failed in popup handler, refusing to open potentially malicious URL.');
           toast.error('OAuth URL validation failed.');
           return false;
         }
-        
-        const popup = window.open(
-          oauthUrl,
-          'oauth-popup',
-          'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer'
-        );
-        const handleOAuthComplete = (event: MessageEvent) => {
-          if (popup && !popup.closed) popup.close();
-          window.removeEventListener('message', handleOAuthComplete);
-        };
-        window.addEventListener('message', handleOAuthComplete);
+
+        // Persist the last user message so it can be resubmitted after auth
+        persistOAuthPendingMessage();
+
+        window.location.href = oauthUrl;
       }
       return true;
     }
@@ -748,8 +752,9 @@ export const Chat = () => {
         if (oauthUrl) {
           // Validate URL before opening to prevent Open Redirect attacks
           if (isValidConsentPromptURL(oauthUrl)) {
-            // Open the validated OAuth URL in a new tab
-            window.open(oauthUrl, '_blank', 'noopener,noreferrer');
+            // Persist the last user message so it can be resubmitted after auth
+            persistOAuthPendingMessage();
+            window.location.href = oauthUrl;
           } else {
             console.error('OAuth URL validation failed, refusing to open potentially malicious URL:', oauthUrl);
             toast.error('Invalid OAuth URL received. Please contact support.');
@@ -1433,6 +1438,33 @@ export const Chat = () => {
     setCurrentMessage(editedMessage);
     handleSend(editedMessage, deleteCount || 0);
   }, [handleSend]);
+
+  // After returning from the OAuth provider, resubmit the message that triggered auth.
+  useEffect(() => {
+    const pendingMessageRaw = sessionStorage.getItem('oauth_pending_message');
+    const pendingConversationId = sessionStorage.getItem('oauth_pending_conversation_id');
+    if (!pendingMessageRaw || !pendingConversationId) return;
+    if (!selectedConversation || selectedConversation.id !== pendingConversationId) return;
+
+    sessionStorage.removeItem('oauth_pending_message');
+    sessionStorage.removeItem('oauth_pending_conversation_id');
+
+    const resume = async () => {
+      let pendingMessage: Message;
+      try {
+        pendingMessage = JSON.parse(pendingMessageRaw);
+      } catch {
+        return;
+      }
+      // Ensure the WebSocket is connected before calling handleSend
+      if (webSocketModeRef.current && !webSocketConnectedRef.current) {
+        await connectWebSocket();
+      }
+      // Delete the user message + empty assistant placeholder appended during original send, then resubmit.
+      handleSend(pendingMessage, 2);
+    };
+    resume();
+  }, [selectedConversation?.id]);
 
   // Add a new effect to handle streaming state changes
   useEffect(() => {
