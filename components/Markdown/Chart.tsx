@@ -93,7 +93,7 @@ const Chart = (props: any) => {
     angle: 25,
     textAnchor: 'start',
     height: 100,
-    interval: 0, // disable auto-hiding of labels
+    interval: "preserveEnd", // auto-hide ticks based on available space
     tickFormatter: (label: string) => {
         // truncate long xAxis labels with ellipsis
       const maxLength = 20;
@@ -133,7 +133,7 @@ const Chart = (props: any) => {
           <ResponsiveContainer {...defaultContainerProps}>
             <BarChart id={`chart-BarChart-${Label}`} data={Data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis {...defaultXAxisProps} />
+              <XAxis {...defaultXAxisProps} interval={0} />
               <YAxis />
               <Tooltip />
               <Legend {...LegendProps} />
