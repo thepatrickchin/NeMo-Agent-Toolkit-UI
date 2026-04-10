@@ -355,7 +355,7 @@ export const ChatMessage: FC<Props> = memo(
                     </div>
                   </div>
                 ) : (
-                  <div className="prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-pre-wrap overflow-x-auto">
+                  <div data-testid="user-message" className="prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-pre-wrap overflow-x-auto">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeRaw] as any}
@@ -477,7 +477,7 @@ export const ChatMessage: FC<Props> = memo(
                     </div>
                   )}
                   {/* for response content */}
-                  <div className="overflow-x-auto prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-normal">
+                  <div data-testid="response-content" className="overflow-x-auto prose dark:prose-invert flex-1 w-full flex-grow max-w-full whitespace-normal">
                     <MemoizedReactMarkdown
                       rehypePlugins={[rehypeRaw] as any}
                       remarkPlugins={[
