@@ -9,29 +9,20 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
-import React, { useContext, useState, useRef, useEffect, useMemo } from 'react';
-
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { env } from 'next-runtime-env';
 
-import { loadContentFile } from '@/utils/app/content';
 import { getWorkflowName } from '@/utils/app/helper';
 import HomeContext from '@/pages/api/home/home.context';
 import { useTheme } from '@/contexts/ThemeContext';
 
 import { DataStreamControls } from './DataStreamControls';
-import { MemoizedReactMarkdown } from '@/components/Markdown/MemoizedReactMarkdown';
-import { getReactMarkDownCustomComponents } from '@/components/Markdown/CustomComponents';
-
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
 
 interface Props {
   webSocketModeRef?: React.MutableRefObject<boolean>;
 }
 
 export const ChatHeader = ({ webSocketModeRef }: Props) => {
-  const [welcomeContent, setWelcomeContent] = useState<string>('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(
     env('NEXT_PUBLIC_NAT_RIGHT_MENU_OPEN') === 'true' ||
@@ -56,25 +47,9 @@ export const ChatHeader = ({ webSocketModeRef }: Props) => {
 
   const { lightMode, setLightMode } = useTheme();
 
-  // Memoize the markdown components to prevent recreation on every render
-  const markdownComponents = useMemo(() => {
-    return getReactMarkDownCustomComponents();
-  }, []);
-
   const handleLogin = () => {
     console.log('Login clicked');
     setIsMenuOpen(false);
-  };
-
-  const loadWelcomeContent = async () => {
-    try {
-      const welcomeMarkdown = await loadContentFile('welcome.md');
-      if (welcomeMarkdown) {
-        setWelcomeContent(welcomeMarkdown);
-      }
-    } catch (error) {
-      console.error('Failed to load content:', error);
-    }
   };
 
   useEffect(() => {
@@ -83,15 +58,6 @@ export const ChatHeader = ({ webSocketModeRef }: Props) => {
         setIsMenuOpen(false);
       }
     };
-
-    // Load welcome content if enabled
-    const welcomeEnabled =
-      env('NEXT_PUBLIC_NAT_WELCOME_MESSAGE_ON') === 'true' ||
-      process?.env?.NEXT_PUBLIC_NAT_WELCOME_MESSAGE_ON === 'true';
-
-    if (welcomeEnabled) {
-      loadWelcomeContent();
-    }
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -104,44 +70,11 @@ export const ChatHeader = ({ webSocketModeRef }: Props) => {
           : 'bg-[#76b900] sticky'
         }  py-2 px-4 text-sm text-white dark:border-none dark:bg-black dark:text-neutral-200`}
     >
-      {selectedConversation?.messages?.length > 0 ? (
+      {selectedConversation?.messages?.length > 0 && (
         <div
           className={`absolute top-6 left-1/2 transform -translate-x-1/2 -translate-y-1/2`}
         >
           <span className="text-lg font-semibold text-white">{workflow}</span>
-        </div>
-      ) : (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 mx-auto flex flex-col space-y-5 md:space-y-10 px-3 pt-5 md:pt-12 sm:max-w-[600px] text-center">
-          <div className="text-3xl font-semibold text-gray-800 dark:text-white">
-            {env('NEXT_PUBLIC_NAT_GREETING_TITLE') ||
-              process?.env?.NEXT_PUBLIC_NAT_GREETING_TITLE ||
-              `Hi, I'm ${workflow}`}
-          </div>
-          <div className="text-lg text-gray-600 dark:text-gray-400">
-            {env('NEXT_PUBLIC_NAT_GREETING_SUBTITLE') ||
-              process?.env?.NEXT_PUBLIC_NAT_GREETING_SUBTITLE ||
-              'How can I assist you today?'}
-          </div>
-          {welcomeContent && (
-            <div className="text-sm text-left text-gray-600 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none bg-gray-100 dark:bg-gray-800 rounded-lg p-5 [&>div>*:first-child]:mt-0 [&>div>*:last-child]:mb-0">
-              <MemoizedReactMarkdown
-                className="prose dark:prose-invert w-full max-w-none break-words"
-                rehypePlugins={[rehypeRaw] as any}
-                remarkPlugins={[
-                  remarkGfm,
-                  [
-                    remarkMath,
-                    {
-                      singleDollarTextMath: false,
-                    },
-                  ],
-                ]}
-                components={markdownComponents}
-              >
-                {welcomeContent}
-              </MemoizedReactMarkdown>
-            </div>
-          )}
         </div>
       )}
 

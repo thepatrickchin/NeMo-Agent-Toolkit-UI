@@ -69,6 +69,7 @@ import {
 import { ChatInput } from './ChatInput';
 import { ChatLoader } from './ChatLoader';
 import { MemoizedChatMessage } from './MemoizedChatMessage';
+import { WelcomeMessage } from './WelcomeMessage';
 
 
 // Streaming utilities for handling SSE and NDJSON safely
@@ -1791,10 +1792,11 @@ export const Chat = () => {
     <div className="relative flex-1 overflow-hidden bg-white dark:bg-[#343541] transition-all duration-300 ease-in-out">
       <>
         <div
-          className="max-h-full overflow-x-hidden overflow-y-auto"
+          className="h-full overflow-x-hidden overflow-y-auto"
           ref={chatContainerRef}
           onScroll={handleScroll}
         >
+          {selectedConversation?.messages?.length === 0 && <WelcomeMessage />}
           {selectedConversation?.messages.map((message, index) => {
             if (!shouldRenderAssistantMessage(message)) {
               return null; // Hide empty assistant messages
@@ -1811,7 +1813,7 @@ export const Chat = () => {
           })}
           {loading && <ChatLoader statusUpdateText={`Thinking...`} />}
           <div
-            className="h-[162px] bg-white dark:bg-[#343541]"
+            className={`${selectedConversation?.messages?.length === 0 ? 'h-0' : 'h-[162px]'} bg-white dark:bg-[#343541]`}
             ref={messagesEndRef}
           ></div>
         </div>
